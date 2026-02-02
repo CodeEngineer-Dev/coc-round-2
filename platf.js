@@ -79,7 +79,7 @@ const { Block, Platformer } = (function () {
         y,
         z,
         x + Player.width,
-        y + Player.height - 0.3, // Switched height to y-axis, VERY IMPORTANT!
+        y + Player.height, // Switched height to y-axis, VERY IMPORTANT!
         z + Player.width,
       );
       // Creates x, y, z velocities
@@ -100,7 +100,7 @@ const { Block, Platformer } = (function () {
       // Sets camera position
       camera.transform.setPosition(
         this.hbox.x1 + Player.width / 2,
-        this.hbox.y1 + Player.height, // Same change as in the constructor!
+        this.hbox.y1 + Player.height - 0.3, // Same change as in the constructor!
         this.hbox.z1 + Player.width / 2,
       );
       // Set rotation (0 at the end is roll, but we don't use roll)
