@@ -26,8 +26,14 @@ function updateDelta() {
     past = now;
 }
 
-// Canvas
+// Canvas and overlay
 const canvas = document.querySelector("#canvas");
+const overlay = document.querySelector("#overlay");
+canvas.width = canvas.getBoundingClientRect().width;
+canvas.height = canvas.getBoundingClientRect().height;
+overlay.width = overlay.getBoundingClientRect().width;
+overlay.height = overlay.getBoundingClientRect().height;
+const ctx2D = overlay.getContext("2d");
 
 // Events (events + mouse)
 const events = {dx: 0, dy: 0};
@@ -45,8 +51,8 @@ document.addEventListener("keyup", e => {
 })
 
 // Lock pointer upon click
-canvas.addEventListener("mousedown", () => {
-    canvas.requestPointerLock();
+overlay.addEventListener("mousedown", () => {
+    overlay.requestPointerLock();
 })
 
 // Mouse movement event listener
@@ -70,7 +76,7 @@ function onMouseUp() {
 
 // When pointer is locked
 document.addEventListener("pointerlockchange", () => {
-    if (document.pointerLockElement == canvas) {
+    if (document.pointerLockElement == overlay) {
         // Mouse stuff
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mousedown", onMouseDown);
