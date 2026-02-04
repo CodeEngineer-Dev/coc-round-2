@@ -38,11 +38,34 @@
     <script type src="glb.js"></script>
     <script type src="hbox.js"></script>
     <script type src="platf.js"></script>
+    <script type src="models.js"></script>
     <script type>
         // Initialize a renderer
         const renderer = new Renderer('canvas');
         // Load in a model
-        renderer.assetManager.loadFromBase64('cube', 'Z2xURgIAAACACAAAyAQAAEpTT057ImFzc2V0Ijp7ImdlbmVyYXRvciI6Iktocm9ub3MgZ2xURiBCbGVuZGVyIEkvTyB2NS4wLjIxIiwidmVyc2lvbiI6IjIuMCJ9LCJzY2VuZSI6MCwic2NlbmVzIjpbeyJuYW1lIjoiU2NlbmUiLCJub2RlcyI6WzBdfV0sIm5vZGVzIjpbeyJtZXNoIjowLCJuYW1lIjoiQ3ViZSJ9XSwibWF0ZXJpYWxzIjpbeyJkb3VibGVTaWRlZCI6dHJ1ZSwibmFtZSI6Ik1hdGVyaWFsIiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yVGV4dHVyZSI6eyJpbmRleCI6MH0sIm1ldGFsbGljRmFjdG9yIjowLCJyb3VnaG5lc3NGYWN0b3IiOjAuNX19XSwibWVzaGVzIjpbeyJuYW1lIjoiQ3ViZSIsInByaW1pdGl2ZXMiOlt7ImF0dHJpYnV0ZXMiOnsiUE9TSVRJT04iOjAsIk5PUk1BTCI6MSwiVEVYQ09PUkRfMCI6Mn0sImluZGljZXMiOjMsIm1hdGVyaWFsIjowfV19XSwidGV4dHVyZXMiOlt7InNhbXBsZXIiOjAsInNvdXJjZSI6MH1dLCJpbWFnZXMiOlt7ImJ1ZmZlclZpZXciOjQsIm1pbWVUeXBlIjoiaW1hZ2UvcG5nIiwibmFtZSI6InRlc3QifV0sImFjY2Vzc29ycyI6W3siYnVmZmVyVmlldyI6MCwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjI0LCJtYXgiOlsxLDEsMV0sIm1pbiI6Wy0xLC0xLC0xXSwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjEsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoyNCwidHlwZSI6IlZFQzMifSx7ImJ1ZmZlclZpZXciOjIsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoyNCwidHlwZSI6IlZFQzIifSx7ImJ1ZmZlclZpZXciOjMsImNvbXBvbmVudFR5cGUiOjUxMjMsImNvdW50IjozNiwidHlwZSI6IlNDQUxBUiJ9XSwiYnVmZmVyVmlld3MiOlt7ImJ1ZmZlciI6MCwiYnl0ZUxlbmd0aCI6Mjg4LCJieXRlT2Zmc2V0IjowLCJ0YXJnZXQiOjM0OTYyfSx7ImJ1ZmZlciI6MCwiYnl0ZUxlbmd0aCI6Mjg4LCJieXRlT2Zmc2V0IjoyODgsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjowLCJieXRlTGVuZ3RoIjoxOTIsImJ5dGVPZmZzZXQiOjU3NiwidGFyZ2V0IjozNDk2Mn0seyJidWZmZXIiOjAsImJ5dGVMZW5ndGgiOjcyLCJieXRlT2Zmc2V0Ijo3NjgsInRhcmdldCI6MzQ5NjN9LHsiYnVmZmVyIjowLCJieXRlTGVuZ3RoIjo4MywiYnl0ZU9mZnNldCI6ODQwfV0sInNhbXBsZXJzIjpbeyJtYWdGaWx0ZXIiOjk3MjgsIm1pbkZpbHRlciI6OTk4NH1dLCJidWZmZXJzIjpbeyJieXRlTGVuZ3RoIjo5MjR9XX0gICCcAwAAQklOAAAAgD8AAIA/AACAvwAAgD8AAIA/AACAvwAAgD8AAIA/AACAvwAAgD8AAIC/AACAvwAAgD8AAIC/AACAvwAAgD8AAIC/AACAvwAAgD8AAIA/AACAPwAAgD8AAIA/AACAPwAAgD8AAIA/AACAPwAAgD8AAIC/AACAPwAAgD8AAIC/AACAPwAAgD8AAIC/AACAPwAAgL8AAIA/AACAvwAAgL8AAIA/AACAvwAAgL8AAIA/AACAvwAAgL8AAIC/AACAvwAAgL8AAIC/AACAvwAAgL8AAIC/AACAvwAAgL8AAIA/AACAPwAAgL8AAIA/AACAPwAAgL8AAIA/AACAPwAAgL8AAIC/AACAPwAAgL8AAIC/AACAPwAAgL8AAIC/AACAPwAAAAAAAAAAAACAvwAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAvwAAAAAAAIC/AAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIC/AAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAvwAAAAAAAIA/AAAAAAAAgL8AAAAAAAAAAAAAAAAAAAAAAACAvwAAAAAAAIC/AAAAAAAAgL8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAgL8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIC/AAAAAAAAgL8AAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAIA/AACAPwAAAAAAAIA/AACAPwAAgD8AAAAAAACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwEADQATAAEAEwAHAAkABgASAAkAEgAVABcAFAAOABcADgARABAABAAKABAACgAWAAUAAgAIAAUACAALAA8ADAAAAA8AAAADAIlQTkcNChoKAAAADUlIRFIAAAACAAAAAggGAAAAcrYNJAAAABpJREFUCJljzNpn8P9PNSMD059qRgaW1v8MAEVdBtN2EIA+AAAAAElFTkSuQmCCAA==');
+
+        /*
+            Meshes available from blocks:
+            - dirt
+            - grass
+            - rock
+            - stone
+            - brick
+            - wood
+        */
+        renderer.assetManager.loadFromBase64('blocks', blocksBase64);
+
+        /* 
+            Meshes available from items:
+            - sword
+            - dagger
+            - bow_neutral
+            - bow_drawn
+            - arrow
+        */
+        renderer.assetManager.loadFromBase64('items', itemsBase64);
+
+        console.log(renderer.assetManager);
 
         // Initialize platformer
         const plat = new Platformer(0, 27, 0);
@@ -50,15 +73,20 @@
         // Add blocks
         for (let i = -5; i < 5; i++) {
             for (let j = -5; j < 5; j++) {
-                let maxk = Math.random() * 5;
+                let maxk = Math.round(Math.random() * 5);
                 if (i == 0 && j == 0) {
-                    maxk = 25;
+                    maxk = 10;
                 }
                 for (let k = -1; k < maxk; k ++) {
-                    plat.addBlock(new Block(i * 1, k, j * 1, renderer.scene));
+                    if (k == maxk - 1) {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/grass', renderer.scene));}
+                    else {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/dirt', renderer.scene));}
                 }
             }
         }
+
+        const sword = new RenderComponent("items/sword");
+        sword.transform.setRotation(0, 0, 0);
+        renderer.scene.addComponent(sword);
 
         function main(timestamp) {
             ctx2D.clearRect(0, 0, overlay.width, overlay.height);
@@ -67,6 +95,15 @@
 
             // Orient camera
             plat.player.orient(renderer.scene.camera);
+
+            let forwardVec = renderer.scene.camera.transform.getForward();
+
+            let playerTranslation = renderer.scene.camera.transform.translation;
+            let yAngle = glMatrix.quat.getAxisAngle([0, 1, 0], renderer.scene.camera.transform.rotation);
+            
+            sword.transform.setPosition(playerTranslation[0], playerTranslation[1], playerTranslation[2]);
+            
+
 
             events.dx = 0;
             events.dy = 0;
