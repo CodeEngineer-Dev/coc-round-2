@@ -434,7 +434,17 @@ const { Renderer, RenderComponent } = (function () {
       this.isDirty = true;
     }
 
-    ///getAngle(axis, )
+    getAngle(axis) {
+      let axisVec;
+      if (axis == "x") {
+        axisVec = [1, 0, 0];
+      } else if (axis == "y") {
+        axisVec = [0, 1, 0];
+      } else {
+        axisVec = [0, 0, -1];
+      }
+      return glMatrix.quat.getAxisAngle(axisVec, this.rotation);
+    }
 
     /**
      * Set the scale.
