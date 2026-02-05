@@ -1,146 +1,167 @@
+<!--
+A lot of the inventory code was borrowed from xyzyyxx's other project,
+mainly because he did not want to write it again.
+https://www.khanacademy.org/cs/i/5482258067734528
+-->
+
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>workspace a</title>
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100vw;
-            height: 100vh;
-            margin: 0;
-            padding: 0;
-        }
-        canvas {
-            outline: 1px solid black;
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>workspace a</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+    }
+    canvas {
+      outline: 1px solid black;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
 </head>
 <body>
-    <canvas id="canvas" width="0" height="0"></canvas> <!-- 3D scene, width and height are 0 to allow for any aspect ratio,
-                                                            they are fixed in code later -->
-    <canvas id="overlay" width="0" height="0"></canvas> <!-- 2D rendering overlay -->
+  <canvas id="canvas" width="0" height="0"></canvas> <!-- 3D scene, width and height are 0 to allow for any aspect ratio,
+  they are fixed in code later -->
+  <canvas id="overlay" width="0" height="0"></canvas> <!-- 2D rendering overlay -->
+  
+  <script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.4.4/gl-matrix-min.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/upng-js/2.1.0/UPNG.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/CodeEngineer-Dev/base64glbfiles@main/round1.js"></script>
+  
+  <script type src="utils.js"></script>
+  <script type src="glb.js"></script>
+  <script type src="hbox.js"></script>
+  <script type src="inventory.js"></script>
+  <script type src="items.js"></script>
+  <script type src="platf.js"></script>
+  <script type src="models.js"></script>
+  <script type>
+    // Initialize a renderer
+    const renderer = new Renderer('canvas');
+    // Load in a model
+    
+    /*
+    Meshes available from blocks:
+    - dirt
+    - grass
+    - rock
+    - stone
+    - brick
+    - wood
+    */
+    renderer.assetManager.loadFromBase64('blocks', blocksBase64);
+    
+    /* 
+    Meshes available from items:
+    - sword
+    - dagger
+    - bow_neutral
+    - bow_drawn
+    - arrow
+    */
+    renderer.assetManager.loadFromBase64('items', itemsBase64);
+    
+    // Initialize platformer
+    plat = new Platformer(0, 27, 0);
+    plat.player.inventory.slots[0][0].content = new ItemInstance(proto1);
+    plat.player.inventory.slots[0][0].amount = 1;
 
-    <script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.4.4/gl-matrix-min.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/upng-js/2.1.0/UPNG.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/CodeEngineer-Dev/base64glbfiles@main/round1.js"></script>
+    plat.player.inventory.slots[0][1].content = new ItemInstance(proto2);
+    plat.player.inventory.slots[0][1].amount = 2;
 
-    <script type src="utils.js"></script>
-    <script type src="glb.js"></script>
-    <script type src="hbox.js"></script>
-    <script type src="platf.js"></script>
-    <script type src="models.js"></script>
-    <script type>
-        // Initialize a renderer
-        const renderer = new Renderer('canvas');
-        // Load in a model
-
-        /*
-            Meshes available from blocks:
-            - dirt
-            - grass
-            - rock
-            - stone
-            - brick
-            - wood
-        */
-        renderer.assetManager.loadFromBase64('blocks', blocksBase64);
-
-        /* 
-            Meshes available from items:
-            - sword
-            - dagger
-            - bow_neutral
-            - bow_drawn
-            - arrow
-        */
-        renderer.assetManager.loadFromBase64('items', itemsBase64);
-
-        console.log(renderer.assetManager);
-
-        // Initialize platformer
-        const plat = new Platformer(0, 27, 0);
-
-        // Add blocks
-        for (let i = -5; i < 5; i++) {
-            for (let j = -5; j < 5; j++) {
-                let maxk = Math.round(Math.random() * 5);
-                if (i == 0 && j == 0) {
-                    maxk = 10;
-                }
-                for (let k = -1; k < maxk; k ++) {
-                    if (k == maxk - 1) {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/grass', renderer.scene));}
-                    else {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/dirt', renderer.scene));}
-                }
-            }
+    plat.player.inventory.slots[0][2].content = new ItemInstance(proto2);
+    plat.player.inventory.slots[0][2].amount = 3;
+    
+    // Add blocks
+    for (let i = -5; i < 5; i++) {
+      for (let j = -5; j < 5; j++) {
+        let maxk = Math.round(Math.random() * 5);
+        if (i == 0 && j == 0) {
+          maxk = 10;
         }
-
-        const sword = new RenderComponent("items/sword");
-        sword.transform.setRotation(0, 0, 0);
-        renderer.scene.addComponent(sword);
-
-        function main(timestamp) {
-            ctx2D.clearRect(0, 0, overlay.width, overlay.height);
-            updateDelta();
-            plat.step();
-
-            // Orient camera
-            plat.player.orient(renderer.scene.camera);
-
-            let forwardVec = renderer.scene.camera.transform.getForward();
-
-            let playerTranslation = renderer.scene.camera.transform.translation;
-            let yAngle = glMatrix.quat.getAxisAngle([0, 1, 0], renderer.scene.camera.transform.rotation);
-            
-            sword.transform.setPosition(playerTranslation[0], playerTranslation[1], playerTranslation[2]);
-            
-
-
-            events.dx = 0;
-            events.dy = 0;
-
-            renderer.render();
-            plat.player.healthBar();
-
-            // Handle death
-            if (plat.player.health <= 0) {
-                // Red overlay
-                ctx2D.fillStyle = "#ff000055";
-                ctx2D.fillRect(0, 0, overlay.width, overlay.height);
-                
-                // Text
-                ctx2D.fillStyle = "#ffffff";
-                ctx2D.font = "bold 100px Arial";
-                ctx2D.textBaseline = "middle";
-                ctx2D.textAlign = "center";
-                ctx2D.fillText("YOU DIED", overlay.width / 2, overlay.height / 3);
-                ctx2D.font = "bold 25px Arial";
-                ctx2D.fillText("Press R to respawn", overlay.width / 2, overlay.height / 3 + 75);
-                
-                // R to respawn
-                if (events.KeyR) {
-                    plat.player.x = plat.spawnX;
-                    plat.player.y = plat.spawnY;
-                    plat.player.z = plat.spawnZ;
-                    plat.player.xv = 0;
-                    plat.player.yv = 0;
-                    plat.player.zv = 0;
-                    plat.player.health = plat.player.maxHealth;
-                }
-            }
-            
-            requestAnimationFrame(main);
+        for (let k = -1; k < maxk; k ++) {
+          if (k == maxk - 1) {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/grass', renderer.scene));}
+          else {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/dirt', renderer.scene));}
         }
-        requestAnimationFrame(main);
-    </script>
+      }
+    }
+    
+    const sword = new RenderComponent("items/sword");
+    sword.transform.setRotation(5, -5, 0);
+    renderer.scene.addComponent(sword);
+    
+    function main(timestamp) {
+      ctx2D.clearRect(0, 0, overlay.width, overlay.height);
+      updateDelta();
+      plat.step();
+      
+      // Orient camera
+      plat.player.orient(renderer.scene.camera);
+      
+      let forwardVec = renderer.scene.camera.transform.getForward();
+      
+      let playerTranslation = renderer.scene.camera.transform.translation;
+      let yAngle = glMatrix.quat.getAxisAngle([0, 1, 0], renderer.scene.camera.transform.rotation);
+      
+      sword.transform.setPosition(playerTranslation[0], playerTranslation[1], playerTranslation[2]);
+      
+      events.dx = 0;
+      events.dy = 0;
+      
+      renderer.render();
+      plat.player.healthBar();
+
+      // Inventory
+      plat.player.inventory.dispUpd();
+      
+      // Handle death
+      if (plat.player.health <= 0) {
+        // Red overlay
+        ctx2D.fillStyle = "#ff000055";
+        ctx2D.fillRect(0, 0, overlay.width, overlay.height);
+        
+        // Text
+        ctx2D.fillStyle = "#ffffff";
+        ctx2D.font = "bold 100px Arial";
+        ctx2D.textBaseline = "middle";
+        ctx2D.textAlign = "center";
+        ctx2D.fillText("YOU DIED", overlay.width / 2, overlay.height / 3);
+        ctx2D.font = "bold 25px Arial";
+        ctx2D.fillText("Press R to respawn", overlay.width / 2, overlay.height / 3 + 75);
+        
+        // R to respawn
+        if (events.KeyR) {
+          plat.player.x = plat.spawnX;
+          plat.player.y = plat.spawnY;
+          plat.player.z = plat.spawnZ;
+          plat.player.xv = 0;
+          plat.player.yv = 0;
+          plat.player.zv = 0;
+          plat.player.health = plat.player.maxHealth;
+        }
+      }
+
+      // Draw pointer (if in use)
+      drawPointer();
+
+      // Update prev events
+      Object.assign(eventsPrev, events);
+      
+      requestAnimationFrame(main);
+    }
+    requestAnimationFrame(main);
+  </script>
 </body>
 </html>

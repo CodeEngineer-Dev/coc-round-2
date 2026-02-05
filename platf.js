@@ -23,7 +23,6 @@ const { Block, Platformer } = (function () {
       this.x = x;
       this.y = y;
       this.z = z;
-      //this.texture = texture;
       this.hbox = new CubicHitbox(x, y, z, x + 1, y + 1, z + 1);
 
       // Assign render component to block
@@ -93,6 +92,8 @@ const { Block, Platformer } = (function () {
       this.maxHealth = 100;
       this.health = this.maxHealth;
       this.displayHealth = this.health; // For a smooth animation when damaging or regen-ing
+      // Inventory
+      this.inventory = new Inventory();
     }
 
     /** Orients camera.
@@ -214,7 +215,7 @@ const { Block, Platformer } = (function () {
       p.zv = 0;
 
       // Switched these around until they worked, needed to add negation signs to forward and backwards.
-      if (p.health > 0) {
+      if (p.health > 0 && !p.inventory.opened) {
         if (events.KeyD) {
           p.xv += HVEL * Math.cos(p.yaw);
           p.zv -= HVEL * Math.sin(p.yaw);
@@ -260,7 +261,7 @@ const { Block, Platformer } = (function () {
           p.damage(Math.pow(-p.yv / JUMP, 3) * 2);
         }
         // Only allow jumps if falling
-        if (p.health > 0 && events.Space && p.yv < 0) {
+        if (p.health > 0 && events.Space && p.yv < 0 && !p.inventory.opened) {
           p.yv = JUMP;
         } else {
           p.yv = 0;
@@ -269,10 +270,15 @@ const { Block, Platformer } = (function () {
       }
 
       // Angling
-      if (p.health > 0) {
+      if (p.health > 0 && !p.inventory.opened) {
         p.yaw -= events.dx * SENS;
         p.pitch -= events.dy * SENS;
         p.pitch = clamp(p.pitch, -Math.PI / 2, Math.PI / 2);
+      }
+
+      // Inventory
+      if (events.KeyE && !eventsPrev.KeyE) {
+        p.inventory.toggleOpened();
       }
     }
   }
