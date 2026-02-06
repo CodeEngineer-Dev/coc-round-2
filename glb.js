@@ -48,6 +48,8 @@ const { Renderer, RenderComponent } = (function () {
       this.meshes = {};
       this.materials = {};
       this.textures = {};
+      this.scenes = {};
+      this.nodes = {};
     }
     /**
      * Takes an array buffer representing a GLB file and splits it into its JSON and binary sections.
@@ -152,11 +154,13 @@ const { Renderer, RenderComponent } = (function () {
      * @param {Uint8Array} binary Binary part of .glb file.
      */
     loadModel(name, json, binary) {
+      console.log(json);
       // Get the array of materials and add them to materials under a "folder".
       const materials = json.materials.map((material) => {
         return structuredClone(material);
       });
       this.materials[name] = materials;
+
       // Textures require images, samplers, and textures to exist in the JSON.
       if ("images" in json && "samplers" in json && "textures" in json) {
         // Load images
@@ -344,6 +348,16 @@ const { Renderer, RenderComponent } = (function () {
       for (const mesh of meshes) {
         this.meshes[`${name}/${mesh.name}`] = mesh;
       }
+
+      // Now let's get the scene and it's nodes
+
+      const scenes = json.scenes.map((scene) => structuredClone(scene));
+      const nodes = structuredClone(json.nodes);
+
+      for (const scene of scenes) {
+        this.scenes[`${name}/${scene.name}`] = scene;
+      }
+      this.nodes[name] = nodes;
     }
     /**
      * Return a mesh given a mesh path.
@@ -614,9 +628,10 @@ const { Renderer, RenderComponent } = (function () {
      *
      * @constructor
      */
-    constructor() {
+    constructor(assetManager) {
       this.componentList = [];
       this.camera = new Camera();
+      this.assetManager = assetManager;
     }
     /**
      * Add render component to scene list
@@ -639,6 +654,9 @@ const { Renderer, RenderComponent } = (function () {
           this.componentList[this.componentList.length - 1];
         this.componentList.pop();
       }
+    }
+    useScene(scenePath) {
+      console.log(this.assetManager.scene);
     }
   }
   /**
@@ -1048,7 +1066,7 @@ const { Renderer, RenderComponent } = (function () {
 
       // Get asset manager and scene
       this.assetManager = new AssetManager(this.gl);
-      this.scene = new Scene();
+      this.scene = new Scene(this.assetManager);
       // Compile shader programs
       this.shader = {
         phong: new Shader(this.gl, basicVS, phongFS),

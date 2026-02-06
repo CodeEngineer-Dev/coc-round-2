@@ -47,31 +47,12 @@ https://www.khanacademy.org/cs/i/5482258067734528
   <script type src="items.js"></script>
   <script type src="platf.js"></script>
   <script type src="models.js"></script>
+  <script type src="base64files.js"></script>
   <script type>
     // Initialize a renderer
     const renderer = new Renderer('canvas');
     // Load in a model
-    
-    /*
-    Meshes available from blocks:
-    - dirt
-    - grass
-    - rock
-    - stone
-    - brick
-    - wood
-    */
-    renderer.assetManager.loadFromBase64('blocks', blocksBase64);
-    
-    /* 
-    Meshes available from items:
-    - sword
-    - dagger
-    - bow_neutral
-    - bow_drawn
-    - arrow
-    */
-    renderer.assetManager.loadFromBase64('items', itemsBase64);
+    renderer.assetManager.loadFromBase64('test-scene', testscene);
     
     // Initialize platformer
     plat = new Platformer(0, 27, 0);
@@ -84,23 +65,6 @@ https://www.khanacademy.org/cs/i/5482258067734528
     plat.player.inventory.slots[0][2].content = new ItemInstance(proto2);
     plat.player.inventory.slots[0][2].amount = 64;
     
-    // Add blocks
-    for (let i = -5; i < 5; i++) {
-      for (let j = -5; j < 5; j++) {
-        let maxk = Math.round(Math.random() * 5);
-        if (i == 0 && j == 0) {
-          maxk = 10;
-        }
-        for (let k = -1; k < maxk; k ++) {
-          if (k == maxk - 1) {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/grass', renderer.scene));}
-          else {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/dirt', renderer.scene));}
-        }
-      }
-    }
-    
-    const sword = new RenderComponent("items/sword");
-    sword.transform.setRotation(5, -5, 0);
-    renderer.scene.addComponent(sword);
     
     function main(timestamp) {
       ctx2D.clearRect(0, 0, overlay.width, overlay.height);
@@ -109,13 +73,6 @@ https://www.khanacademy.org/cs/i/5482258067734528
       
       // Orient camera
       plat.player.orient(renderer.scene.camera);
-      
-      let forwardVec = renderer.scene.camera.transform.getForward();
-      
-      let playerTranslation = renderer.scene.camera.transform.translation;
-      let yAngle = glMatrix.quat.getAxisAngle([0, 1, 0], renderer.scene.camera.transform.rotation);
-      
-      sword.transform.setPosition(playerTranslation[0], playerTranslation[1], playerTranslation[2]);
       
       events.dx = 0;
       events.dy = 0;
@@ -161,7 +118,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
       
       requestAnimationFrame(main);
     }
-    requestAnimationFrame(main);
+    //requestAnimationFrame(main);
   </script>
 </body>
 </html>
