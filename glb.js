@@ -718,11 +718,6 @@ const { Renderer, RenderComponent } = (function () {
     }
 
     updateNodeWorldTransform(node, parentWorldMatrix) {
-      console.log(
-        node.name,
-        parentWorldMatrix,
-        node.renderComponent.transform.getTransformationMatrix(),
-      );
       if (
         (node.renderComponent.transform.isDirty || node.worldDirty) &&
         parentWorldMatrix
@@ -1452,14 +1447,37 @@ const { Renderer, RenderComponent } = (function () {
       return sortedLists;
     }
 
-    flattenSceneList(list) {}
+    flattenNode(node) {
+      let list = [];
+      if ("children" in node) {
+        for (const child of node.children) {
+          list.push(...this.flattenNode(child));
+        }
+      }
+      if (node.renderComponent.mesh) {
+        list.push({
+          mesh: node.renderComponent.mesh,
+          worldMatrix: node.worldMatrix,
+        });
+      }
+
+      return list;
+    }
+    flattenSceneList(list) {
+      let flatList = [];
+      for (const child of list) {
+        flatList.push(...this.flattenNode(child));
+      }
+      return flatList;
+    }
 
     /** Render the scene! */
     render() {
       this.resizeCanvas();
 
       this.scene.updateNodesTree();
-      console.log(this.scene.componentList);
+      let flatList = this.flattenSceneList(this.scene.componentList);
+      console.log(flatList);
 
       // Get a list.
       const primitiveList = this.cullAndSortPrimitives();
