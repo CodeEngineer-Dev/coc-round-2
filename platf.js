@@ -150,7 +150,7 @@ const { Block, Platformer } = (function () {
       ctx2D.fillStyle = "#ff5f5f";
       ctx2D.fillRect(30, 30, (this.displayHealth / this.maxHealth) * 100, 20);
       // Draw outline
-      ctx2D.strokeStyle = "#000000";
+      ctx2D.strokeStyle = "#ffffff";
       ctx2D.lineWidth = 3;
       ctx2D.strokeRect(30, 30, 100, 20);
       // Text number
@@ -279,6 +279,13 @@ const { Block, Platformer } = (function () {
       // Inventory
       if (events.KeyE && !eventsPrev.KeyE) {
         p.inventory.toggleOpened();
+      }
+
+      // Digits (to change inventory slot)
+      for (let i = 1; i <= 9 && i <= p.inventory.slots[0].length; i ++) {
+        if (events[`Digit${i}`]) {
+          p.inventory.selected = i - 1;
+        }
       }
     }
   }

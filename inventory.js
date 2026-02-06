@@ -7,7 +7,6 @@
 
 // TODO: put comments on functions everywhere
 // TODO: make models work
-// TODO: make hotbar keys work
 
 const { Inventory, ItemInstance, ItemPrototype } = (function() {
   const STACK_LIMIT = 64;
@@ -38,6 +37,7 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
   }
   class ItemInstance {
     constructor(prototype) {
+      this.proto = prototype;
       this.name = prototype.name;
       this.attributes = prototype.attributes;
     }
@@ -244,15 +244,49 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
         const hoveredSlot = this.getHoveredSlot();
         
         if (hoveredSlot) {
-          // Click to swap with what the mouse is holding
-          if (events.Mouse && !eventsPrev.Mouse) {
-            // TODO: add full support for stacks, make it so that you can combine stacks
-            // and drop items from stacks one by one using right click
+          // Left click
+          if (events.MouseLeft && !eventsPrev.MouseLeft) {
             const {content, amount} = hoveredSlot;
-            hoveredSlot.content = this.itemDraggedContent;
-            hoveredSlot.amount = this.itemDraggedAmount;
-            this.itemDraggedContent = content;
-            this.itemDraggedAmount = amount;
+            // If the item is stackable and they are the same type
+            if (content?.proto == this.itemDraggedContent?.proto && content?.attributes?.stackable) {
+              // Stack 'em onto each other (until the stack limit)
+              const sumAmount = hoveredSlot.amount + this.itemDraggedAmount;
+              if (sumAmount > STACK_LIMIT) {
+                hoveredSlot.amount = STACK_LIMIT;
+                this.itemDraggedAmount = sumAmount - STACK_LIMIT;
+              } else {
+                hoveredSlot.amount = sumAmount;
+                this.itemDraggedContent = null;
+                this.itemDraggedAmount = 0;
+              }
+            } else {
+              // Otherwise just swap them
+              hoveredSlot.content = this.itemDraggedContent;
+              hoveredSlot.amount = this.itemDraggedAmount;
+              this.itemDraggedContent = content;
+              this.itemDraggedAmount = amount;
+            }
+          }
+          // Right click
+          if (events.MouseRight && !eventsPrev.MouseRight) {
+            const {content, amount} = hoveredSlot;
+            // If the items are stackable, drop them in
+            if ((content?.proto == this.itemDraggedContent?.proto && content?.attributes?.stackable) || content == null) {
+              if (hoveredSlot.amount < STACK_LIMIT) {
+                hoveredSlot.amount ++;
+                hoveredSlot.content = this.itemDraggedContent;
+                this.itemDraggedAmount --;
+                if (this.itemDraggedAmount == 0) {
+                  this.itemDraggedContent = null;
+                }
+              }
+            } else {
+              // Just swap them otherwise
+              hoveredSlot.content = this.itemDraggedContent;
+              hoveredSlot.amount = this.itemDraggedAmount;
+              this.itemDraggedContent = content;
+              this.itemDraggedAmount = amount;
+            }
           }
         }
       }

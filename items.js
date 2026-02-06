@@ -31,7 +31,7 @@ const proto1 = new ItemPrototype(
 const proto2 = new ItemPrototype(
     "1",
     {
-        stackable: false,
+        stackable: true,
         iconGetter: function() {
             return texture2.canvas;
         },

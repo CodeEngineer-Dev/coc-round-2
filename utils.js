@@ -65,7 +65,7 @@ overlay.addEventListener("mousedown", () => {
 
 /** Mouse movement event listener
  * 
- * @param {*} event 
+ * @param {Event} event 
  */
 function onMouseMove(event) {
   events.dx = event.movementX;
@@ -79,12 +79,18 @@ function onMouseMove(event) {
 }
 
 // More listeners
-function onMouseDown() {
-  events.Mouse = true;
+function onMouseDown(e) {
+  switch (e.which) {
+    case 1: events.MouseLeft = true; break;
+    case 3: events.MouseRight = true; break;
+  }
 }
 
-function onMouseUp() {
-  events.Mouse = false;
+function onMouseUp(e) {
+  switch (e.which) {
+    case 1: events.MouseLeft = false; break;
+    case 3: events.MouseRight = false; break;
+  }
 }
 
 // Turn pointer on and off
