@@ -154,7 +154,6 @@ const { Renderer, RenderComponent } = (function () {
      * @param {Uint8Array} binary Binary part of .glb file.
      */
     loadModel(name, json, binary) {
-      console.log(json);
       // Get the array of materials and add them to materials under a "folder".
       const materials = json.materials.map((material) => {
         return structuredClone(material);
@@ -420,7 +419,7 @@ const { Renderer, RenderComponent } = (function () {
       this.rotation =
         "rotation" in transforms
           ? glMatrix.quat.clone(transforms.rotation)
-          : glMatrix.vec3.create();
+          : glMatrix.quat.create();
       this.scale =
         "scale" in transforms
           ? glMatrix.vec3.clone(transforms.scale)
@@ -675,7 +674,7 @@ const { Renderer, RenderComponent } = (function () {
         this.componentList.pop();
       }
     }
-    crawlNode(nodeList, node) {
+    crawlNode(nodeList, node, parent = null) {
       if ("camera" in node) {
         this.camera.transform.setTranslation(
           ...(node.translation ?? [0, 0, 0]),
@@ -685,18 +684,24 @@ const { Renderer, RenderComponent } = (function () {
         );
         this.camera.transform.setScale(...(node.scale ?? [1, 1, 1]));
       } else {
-        let renderComponent = new RenderComponent(node.mesh, node);
+        let renderComponent = new RenderComponent(node.mesh ?? null, node);
+        renderComponent.transform.isDirty = true;
+
+        let obj = {
+          name: node.name,
+          renderComponent,
+          parent,
+          worldMatrix: glMatrix.mat4.create(),
+          worldDirty: true,
+        };
 
         if ("children" in node) {
-          return {
-            renderComponent,
-            children: node.children.map((childNodeIndex) =>
-              this.crawlNode(nodeList, nodeList[childNodeIndex]),
-            ),
-          };
-        } else {
-          return renderComponent;
+          obj.children = node.children.map((childNodeIndex) =>
+            this.crawlNode(nodeList, nodeList[childNodeIndex], obj),
+          );
         }
+
+        return obj;
       }
     }
 
@@ -708,6 +713,39 @@ const { Renderer, RenderComponent } = (function () {
           node,
         );
         if (convertedNode) this.componentList.push(convertedNode);
+      }
+      return this.componentList;
+    }
+
+    updateNodeWorldTransform(node, parentWorldMatrix) {
+      console.log(
+        node.name,
+        parentWorldMatrix,
+        node.renderComponent.transform.getTransformationMatrix(),
+      );
+      if (
+        (node.renderComponent.transform.isDirty || node.worldDirty) &&
+        parentWorldMatrix
+      ) {
+        glMatrix.mat4.multiply(
+          node.worldMatrix,
+          parentWorldMatrix,
+          node.renderComponent.transform.getTransformationMatrix(),
+        );
+      }
+
+      if ("children" in node) {
+        for (const child of node.children) {
+          child.worldDirty = true;
+          this.updateNodeWorldTransform(child, node.worldMatrix);
+        }
+      }
+
+      node.worldDirty = false;
+    }
+    updateNodesTree() {
+      for (const node of this.componentList) {
+        this.updateNodeWorldTransform(node);
       }
     }
   }
@@ -1144,6 +1182,7 @@ const { Renderer, RenderComponent } = (function () {
       }
       this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
     }
+
     /**
      * Gets list of primitives, frustum culls non-visible primitives, and sorts them into categories for more efficient rendering.
      *
@@ -1412,9 +1451,16 @@ const { Renderer, RenderComponent } = (function () {
       }
       return sortedLists;
     }
+
+    flattenSceneList(list) {}
+
     /** Render the scene! */
     render() {
       this.resizeCanvas();
+
+      this.scene.updateNodesTree();
+      console.log(this.scene.componentList);
+
       // Get a list.
       const primitiveList = this.cullAndSortPrimitives();
       // Clear the canvas
