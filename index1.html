@@ -54,7 +54,8 @@ https://www.khanacademy.org/cs/i/5482258067734528
     // Load in a model
     renderer.assetManager.loadFromBase64('test-scene', testscene);
     let sceneGraph = renderer.scene.loadScene('test-scene/Scene');
-    sceneGraph[0].renderComponent.transform.setTranslation(1, 1, 0);
+    //sceneGraph[0].renderComponent.transform.setTranslation(1, 1, 0);
+    renderer.scene.camera.transform.setRotation(-90, 0, 0);
     renderer.render();
     
     // Initialize platformer

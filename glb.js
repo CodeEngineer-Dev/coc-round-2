@@ -25,6 +25,11 @@ Dependencies:
 - UPNG. Used to convert arrays of bytes representing a PNG into a color byte array. https://cdnjs.cloudflare.com/ajax/libs/upng-js/2.1.0/UPNG.min.js
 - pako. A dependency of UPNG, used for inflating/compressing PNG data. https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js
 
+
+
+
+TODO: Add in tangents so that normals work properly.
+
 */
 const { Renderer, RenderComponent } = (function () {
   const MAX_POINT_LIGHTS = 10;
@@ -154,6 +159,7 @@ const { Renderer, RenderComponent } = (function () {
      * @param {Uint8Array} binary Binary part of .glb file.
      */
     loadModel(name, json, binary) {
+      console.log(json);
       // Get the array of materials and add them to materials under a "folder".
       const materials = json.materials.map((material) => {
         return structuredClone(material);
@@ -423,7 +429,7 @@ const { Renderer, RenderComponent } = (function () {
       this.scale =
         "scale" in transforms
           ? glMatrix.vec3.clone(transforms.scale)
-          : glMatrix.vec3.create();
+          : glMatrix.vec3.fromValues(1, 1, 1);
       this.matrix = glMatrix.mat4.create();
       this.normalMatrix = glMatrix.mat3.create();
       // Used to determine if the matrix needs recalculation after transforms change.
@@ -677,12 +683,14 @@ const { Renderer, RenderComponent } = (function () {
     crawlNode(nodeList, node, parent = null) {
       if ("camera" in node) {
         this.camera.transform.setTranslation(
-          ...(node.translation ?? [0, 0, 0]),
+          ...(node.translation ? node.translation : [0, 0, 0]),
         );
         this.camera.transform.setRotationQuaternion(
-          ...(node.rotation ?? glMatrix.quat.create()),
+          ...(node.rotation ? node.rotation : glMatrix.quat.create()),
         );
-        this.camera.transform.setScale(...(node.scale ?? [1, 1, 1]));
+        this.camera.transform.setScale(
+          ...(node.scale ? node.scale : [1, 1, 1]),
+        );
       } else {
         let renderComponent = new RenderComponent(node.mesh ?? null, node);
         renderComponent.transform.isDirty = true;
@@ -966,9 +974,11 @@ const { Renderer, RenderComponent } = (function () {
       vec4 albedo;
       float metalness;
       sampler2D albedoMap;
+      sampler2D MRmap;
       float roughness;
 
       bool isTexture;
+      bool isMRt;
       };
       uniform PBR_Material pbr_material;
 
@@ -1091,6 +1101,17 @@ const { Renderer, RenderComponent } = (function () {
       void main() {
       Material material;
 
+      float metalness;
+      float roughness;
+
+      if (pbr_material.isMRt) {
+        roughness = texture(pbr_material.MRmap, v_texcoord_0).g;
+        metalness = texture(pbr_material.MRmap, v_texcoord_0).b;
+      } else {
+        roughness = pbr_material.roughness;
+        metalness = pbr_material.metalness;
+      }
+
       // Because glb gives PBR materials by default, I need to convert to glb. I used AI to help me figure out how to convert PBR to Phong.
       if (pbr_material.isTexture) {
           vec4 texColor = texture(pbr_material.albedoMap, v_texcoord_0);
@@ -1098,14 +1119,14 @@ const { Renderer, RenderComponent } = (function () {
               discard;
           }
 
-          material.diffuse = texture(pbr_material.albedoMap, v_texcoord_0).rgb * (1.0 - pbr_material.metalness);
-          material.specular = mix(vec3(0.04), texture(pbr_material.albedoMap, v_texcoord_0).rgb, pbr_material.metalness);
+          material.diffuse = texture(pbr_material.albedoMap, v_texcoord_0).rgb * (1.0 - metalness);
+          material.specular = mix(vec3(0.04), texture(pbr_material.albedoMap, v_texcoord_0).rgb, metalness);
       } else {
-          material.diffuse = pbr_material.albedo.rgb * (1.0 - pbr_material.metalness);
-          material.specular = mix(vec3(0.04), pbr_material.albedo.rgb, pbr_material.metalness);
+          material.diffuse = pbr_material.albedo.rgb * (1.0 - metalness);
+          material.specular = mix(vec3(0.04), pbr_material.albedo.rgb, metalness);
       }
-      material.shininess = pow(2.0, 10.0 * (1.0 - pbr_material.roughness));
-      material.ambient = material.diffuse * 0.3;
+      material.shininess = pow(2.0, 10.0 * (1.0 - roughness));
+      material.ambient = material.diffuse * 0.1;
 
       // Normalize the normal vector and view direction.
       vec3 norm = normalize(v_normal);
@@ -1183,7 +1204,7 @@ const { Renderer, RenderComponent } = (function () {
      *
      * @returns {{ opaque: { solid: {}; texture: {}; }; light: { pointLight: {}; spotLight: {}; }; }}
      */
-    cullAndSortPrimitives() {
+    cullAndSortPrimitives(flatList) {
       const sortedLists = {
         opaque: {
           solid: [],
@@ -1334,8 +1355,9 @@ const { Renderer, RenderComponent } = (function () {
       // Some meshes have emissive factors set to zero. Use this variable to check for those.
       let noEmissiveFactor = JSON.stringify([0, 0, 0]);
       // Now sort the components
-      for (const component of this.scene.componentList) {
+      for (const component of flatList) {
         const mesh = this.assetManager.meshes[component.mesh];
+
         // That is, get the primitives and sort them.
         for (const primitive of mesh.primitives) {
           // If not a light, check if can be frustum culled. (Lights must be in the scene even if not visible because they can influence visible objects' lighting.)
@@ -1345,29 +1367,31 @@ const { Renderer, RenderComponent } = (function () {
             glMatrix.vec3.add(center, primitive.vMin, primitive.vMax);
             glMatrix.vec3.scale(center, center, 0.5);
             // Transform that center to world space using the transformation matrix of the component
-            glMatrix.vec3.transformMat4(
-              center,
-              center,
-              component.transform.getTransformationMatrix(),
-            );
+            glMatrix.vec3.transformMat4(center, center, component.worldMatrix);
             // Take a cross-diagonal of the AABB box, make half of that the radius, and multiply it by the largest scale to get a guarenteed complete bounding sphere.
             glMatrix.vec3.sub(ds, primitive.vMax, primitive.vMin);
+
+            let componentScale = glMatrix.vec3.create();
+            glMatrix.mat4.getScaling(componentScale, component.worldMatrix);
+
             const maxScale = Math.max(
-              component.transform.scale[0],
-              component.transform.scale[1],
-              component.transform.scale[2],
+              componentScale[0],
+              componentScale[1],
+              componentScale[2],
             );
             radius = (glMatrix.vec3.len(ds) / 2) * maxScale;
             /// END AI CODE
             // Not in the frustum? Don't bother sorting it.
             if (!checkAllPlanes(center, radius)) {
+              console.log("culled");
               continue;
             }
           }
           // Give the primitive necessary info for drawing.
           const primitiveInstance = {
             ...primitive,
-            transform: component.transform,
+            transform: component.worldMatrix,
+            normalMatrix: component.normalMatrix,
             light: component.light,
           };
           // Get the material
@@ -1375,6 +1399,7 @@ const { Renderer, RenderComponent } = (function () {
             primitive.material.folder,
             primitive.material.index,
           );
+
           // Sort by material
           if (
             material.emissiveFactor != undefined &&
@@ -1455,9 +1480,18 @@ const { Renderer, RenderComponent } = (function () {
         }
       }
       if (node.renderComponent.mesh) {
+        let normalMatrix = glMatrix.mat3.create();
+        let utilMatrix = glMatrix.mat4.create();
+
+        // Invert the matrix, transpose it, and take the upper 3x3 to get the normal matrix.
+        glMatrix.mat4.invert(utilMatrix, node.worldMatrix);
+        glMatrix.mat4.transpose(utilMatrix, utilMatrix);
+        glMatrix.mat3.fromMat4(normalMatrix, utilMatrix);
+
         list.push({
           mesh: node.renderComponent.mesh,
           worldMatrix: node.worldMatrix,
+          normalMatrix: normalMatrix,
         });
       }
 
@@ -1477,12 +1511,11 @@ const { Renderer, RenderComponent } = (function () {
 
       this.scene.updateNodesTree();
       let flatList = this.flattenSceneList(this.scene.componentList);
-      console.log(flatList);
 
       // Get a list.
-      const primitiveList = this.cullAndSortPrimitives();
+      const primitiveList = this.cullAndSortPrimitives(flatList);
       // Clear the canvas
-      this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
       this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
       // Get the projection matrix.
       const projection = glMatrix.mat4.create();
@@ -1550,10 +1583,9 @@ const { Renderer, RenderComponent } = (function () {
           `pointLights[${lightIndex}].quadratic`,
           75 / (light.light?.lightRange * light.light?.lightRange),
         );
-        shader.setUniform(
-          `pointLights[${lightIndex}].position`,
-          light.transform?.translation,
-        );
+        let translation = glMatrix.vec3.create();
+        glMatrix.mat4.getTranslation(translation, light.transform);
+        shader.setUniform(`pointLights[${lightIndex}].position`, translation);
       }
       // Set number of spot lights.
       if (primitiveList.light.spotLight.length > MAX_SPOT_LIGHTS)
@@ -1588,10 +1620,9 @@ const { Renderer, RenderComponent } = (function () {
           `spotLights[${lightIndex}].quadratic`,
           75 / (light.light?.lightRange * light.light?.lightRange),
         );
-        shader.setUniform(
-          `spotLights[${lightIndex}].position`,
-          light.transform?.translation,
-        );
+        let translation = glMatrix.vec3.create();
+        glMatrix.mat4.getTranslation(translation, light.transform);
+        shader.setUniform(`spotLights[${lightIndex}].position`, translation);
         shader.setUniform(
           `spotLights[${lightIndex}].direction`,
           light.light?.direction,
@@ -1608,16 +1639,11 @@ const { Renderer, RenderComponent } = (function () {
 
       // Solid colored primitives
       shader.setUniform("pbr_material.isTexture", false);
+      shader.setUniform("pbr_material.isMRt", false);
       const solids = primitiveList.opaque.solid;
       for (const primitive of solids) {
-        shader.setUniform(
-          "model",
-          primitive.transform.getTransformationMatrix(),
-        );
-        shader.setUniform(
-          "normalMatrix",
-          primitive.transform.getNormalMatrix(),
-        );
+        shader.setUniform("model", primitive.transform);
+        shader.setUniform("normalMatrix", primitive.normalMatrix);
         const material = this.assetManager.getMaterial(
           primitive.material.folder,
           primitive.material.index,
@@ -1644,37 +1670,66 @@ const { Renderer, RenderComponent } = (function () {
         this.gl.bindVertexArray(null);
       }
       // Textured primitives
+      let lastBoundAlbedo = "";
+      let lastBoundNormal = "";
+      let lastBoundRoughMetal = "";
+
       shader.setUniform("pbr_material.isTexture", true);
+
       const textures = primitiveList.opaque.texture;
       for (const folder in textures) {
         for (const index in textures[folder]) {
-          this.gl.activeTexture(this.gl.TEXTURE0);
-          this.gl.bindTexture(
-            this.gl.TEXTURE_2D,
-            this.assetManager.getTexture(folder, Number(index)),
-          );
-          shader.setUniform("pbr_material.albedoMap", 0);
+          if (
+            this.assetManager.getTexture(folder, Number(index)) !=
+            lastBoundAlbedo
+          ) {
+            this.gl.activeTexture(this.gl.TEXTURE0);
+            this.gl.bindTexture(
+              this.gl.TEXTURE_2D,
+              this.assetManager.getTexture(folder, Number(index)),
+            );
+            shader.setUniform("pbr_material.albedoMap", 0);
+            lastBoundAlbedo = this.assetManager.getTexture(
+              folder,
+              Number(index),
+            );
+          }
+
           for (const primitive of textures[folder][index]) {
-            shader.setUniform(
-              "model",
-              primitive.transform.getTransformationMatrix(),
-            );
-            shader.setUniform(
-              "normalMatrix",
-              primitive.transform.getNormalMatrix(),
-            );
+            shader.setUniform("model", primitive.transform);
+            shader.setUniform("normalMatrix", primitive.normalMatrix);
             const material = this.assetManager.getMaterial(
               primitive.material.folder,
               primitive.material.index,
             );
-            shader.setUniform(
-              "pbr_material.metalness",
-              material?.pbrMetallicRoughness.metallicFactor ?? 0,
-            );
-            shader.setUniform(
-              "pbr_material.roughness",
-              material?.pbrMetallicRoughness.roughnessFactor ?? 0,
-            );
+
+            console.log(material);
+            if ("metallicRoughnessTexture" in material.pbrMetallicRoughness) {
+              let texLoc = this.assetManager.getTexture(
+                folder,
+                Number(
+                  material.pbrMetallicRoughness.metallicRoughnessTexture.index,
+                ),
+              );
+              if (texLoc != lastBoundRoughMetal) {
+                shader.setUniform("pbr_material.isMRt", true);
+                this.gl.activeTexture(this.gl.TEXTURE1);
+                this.gl.bindTexture(this.gl.TEXTURE_2D, texLoc);
+                shader.setUniform("pbr_material.MRmap", 1);
+                lastBoundRoughMetal = texLoc;
+              }
+            } else {
+              shader.setUniform("pbr_material.isMRt", false);
+              shader.setUniform(
+                "pbr_material.metalness",
+                material?.pbrMetallicRoughness.metallicFactor ?? 0,
+              );
+              shader.setUniform(
+                "pbr_material.roughness",
+                material?.pbrMetallicRoughness.roughnessFactor ?? 0,
+              );
+            }
+
             this.gl.bindVertexArray(primitive.vao);
             this.gl.drawElements(
               primitive.mode,
@@ -1700,14 +1755,8 @@ const { Renderer, RenderComponent } = (function () {
           shader.setUniform("pbr_material.albedoMap", 0);
 
           for (const primitive of texturedTransparents[folder][index]) {
-            shader.setUniform(
-              "model",
-              primitive.transform.getTransformationMatrix(),
-            );
-            shader.setUniform(
-              "normalMatrix",
-              primitive.transform.getNormalMatrix(),
-            );
+            shader.setUniform("model", primitive.transform);
+            shader.setUniform("normalMatrix", primitive.normalMatrix);
             const material = this.assetManager.getMaterial(
               primitive.material.folder,
               primitive.material.index,
@@ -1777,10 +1826,7 @@ const { Renderer, RenderComponent } = (function () {
         this.gl.bindVertexArray(null);
       }
       for (let primitive of primitiveList.light.spotLight) {
-        shader.setUniform(
-          "model",
-          primitive.transform.getTransformationMatrix(),
-        );
+        shader.setUniform("model", primitive.transform());
         shader.setUniform(
           "emissiveFactor",
           this.assetManager.getMaterial(
