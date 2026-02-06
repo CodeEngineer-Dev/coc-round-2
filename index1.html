@@ -53,6 +53,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
     const renderer = new Renderer('canvas');
     // Load in a model
     renderer.assetManager.loadFromBase64('test-scene', testscene);
+    renderer.scene.loadScene('test-scene/Scene');
     
     // Initialize platformer
     plat = new Platformer(0, 27, 0);

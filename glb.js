@@ -352,7 +352,18 @@ const { Renderer, RenderComponent } = (function () {
       // Now let's get the scene and it's nodes
 
       const scenes = json.scenes.map((scene) => structuredClone(scene));
-      const nodes = structuredClone(json.nodes);
+      const nodes = structuredClone(json.nodes).map((node) => {
+        if ("mesh" in node) {
+          return {
+            ...node,
+            mesh: name + "/" + meshes[node.mesh].name,
+          };
+        } else {
+          return {
+            ...node,
+          };
+        }
+      });
 
       for (const scene of scenes) {
         this.scenes[`${name}/${scene.name}`] = scene;
@@ -401,14 +412,23 @@ const { Renderer, RenderComponent } = (function () {
      *
      * @constructor
      */
-    constructor() {
-      this.translation = glMatrix.vec3.create();
-      this.rotation = glMatrix.quat.create();
-      this.scale = glMatrix.vec3.fromValues(1, 1, 1);
+    constructor(transforms = {}) {
+      this.translation =
+        "translation" in transforms
+          ? glMatrix.vec3.clone(transforms.translation)
+          : glMatrix.vec3.create();
+      this.rotation =
+        "rotation" in transforms
+          ? glMatrix.quat.clone(transforms.rotation)
+          : glMatrix.vec3.create();
+      this.scale =
+        "scale" in transforms
+          ? glMatrix.vec3.clone(transforms.scale)
+          : glMatrix.vec3.create();
       this.matrix = glMatrix.mat4.create();
       this.normalMatrix = glMatrix.mat3.create();
       // Used to determine if the matrix needs recalculation after transforms change.
-      this.isDirty = false;
+      this.isDirty = true;
       this.utilMatrix = glMatrix.mat4.create();
       this.globalForward = glMatrix.vec3.fromValues(0, 0, -1);
       this.globalUp = glMatrix.vec3.fromValues(0, 1, 0);
@@ -424,7 +444,7 @@ const { Renderer, RenderComponent } = (function () {
      * @param {number} y
      * @param {number} z
      */
-    setPosition(x, y, z) {
+    setTranslation(x, y, z) {
       glMatrix.vec3.set(this.translation, x, y, z);
       this.isDirty = true;
     }
@@ -571,9 +591,9 @@ const { Renderer, RenderComponent } = (function () {
      * @param {?outerCutOff} [light.outerCutOff] Used for spot lights, cosine of angle in radians at which spotlight ends completely
      *
      */
-    constructor(meshPath, light) {
+    constructor(meshPath, transforms, light) {
       this.mesh = meshPath;
-      this.transform = new Transform();
+      this.transform = new Transform(transforms);
       this.light = light ?? undefined;
     }
   }
@@ -655,8 +675,40 @@ const { Renderer, RenderComponent } = (function () {
         this.componentList.pop();
       }
     }
-    useScene(scenePath) {
-      console.log(this.assetManager.scene);
+    crawlNode(nodeList, node) {
+      if ("camera" in node) {
+        this.camera.transform.setTranslation(
+          ...(node.translation ?? [0, 0, 0]),
+        );
+        this.camera.transform.setRotationQuaternion(
+          ...(node.rotation ?? glMatrix.quat.create()),
+        );
+        this.camera.transform.setScale(...(node.scale ?? [1, 1, 1]));
+      } else {
+        let renderComponent = new RenderComponent(node.mesh, node);
+
+        if ("children" in node) {
+          return {
+            renderComponent,
+            children: node.children.map((childNodeIndex) =>
+              this.crawlNode(nodeList, nodeList[childNodeIndex]),
+            ),
+          };
+        } else {
+          return renderComponent;
+        }
+      }
+    }
+
+    loadScene(scenePath) {
+      for (let nodeIndex of this.assetManager.scenes[scenePath].nodes) {
+        let node = this.assetManager.nodes[scenePath.split("/")[0]][nodeIndex];
+        let convertedNode = this.crawlNode(
+          this.assetManager.nodes[scenePath.split("/")[0]],
+          node,
+        );
+        if (convertedNode) this.componentList.push(convertedNode);
+      }
     }
   }
   /**
