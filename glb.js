@@ -1515,7 +1515,7 @@ const { Renderer, RenderComponent } = (function () {
       // Get a list.
       const primitiveList = this.cullAndSortPrimitives(flatList);
       // Clear the canvas
-      this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+      this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
       this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
       // Get the projection matrix.
       const projection = glMatrix.mat4.create();
@@ -1703,7 +1703,6 @@ const { Renderer, RenderComponent } = (function () {
               primitive.material.index,
             );
 
-            console.log(material);
             if ("metallicRoughnessTexture" in material.pbrMetallicRoughness) {
               let texLoc = this.assetManager.getTexture(
                 folder,
