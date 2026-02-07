@@ -599,7 +599,7 @@ const { Renderer, RenderComponent } = (function () {
     constructor(meshPath, transforms, light) {
       this.mesh = meshPath;
       this.transform = new Transform(transforms);
-      this.light = light ?? undefined;
+      this.light = light || null;
     }
   }
   /**
@@ -1429,14 +1429,23 @@ const { Renderer, RenderComponent } = (function () {
           // Sort by material
           if (
             material.emissiveFactor != undefined &&
-            JSON.stringify(material.emissiveFactor) != noEmissiveFactor &&
-            primitiveInstance.light != undefined
+            JSON.stringify(material.emissiveFactor) != noEmissiveFactor
           ) {
+            if (
+              primitiveInstance.light == null ||
+              primitiveInstance.light == undefined
+            ) {
+              primitiveInstance.light = {
+                lightType: "point",
+                lightRange: 10,
+              };
+            }
             // This is a light
             if ("emissiveTexture" in material) {
               // This is a lighted texture
               let folder = primitive.material.folder;
               let index = material.emissiveTexture.index;
+
               primitiveInstance.lightTexture = {
                 folder,
                 index,
@@ -1495,6 +1504,62 @@ const { Renderer, RenderComponent } = (function () {
           }
         }
       }
+
+      // At the end of cullAndSortPrimitives, right before return sortedLists
+      console.log("=== SORTED LISTS ===");
+      console.log("Opaque Solid:", sortedLists.opaque.solid.length);
+      console.log(
+        "Opaque Texture folders:",
+        Object.keys(sortedLists.opaque.texture),
+      );
+      for (const folder in sortedLists.opaque.texture) {
+        for (const index in sortedLists.opaque.texture[folder]) {
+          console.log(
+            `  ${folder}[${index}]:`,
+            sortedLists.opaque.texture[folder][index].length,
+            "primitives",
+          );
+        }
+      }
+      console.log("Point Lights:", sortedLists.light.pointLight.length);
+      console.log("Spot Lights:", sortedLists.light.spotLight.length);
+
+      // Log details of each category
+      console.log("\n=== TEXTURED PRIMITIVES ===");
+      for (const folder in sortedLists.opaque.texture) {
+        for (const index in sortedLists.opaque.texture[folder]) {
+          for (const prim of sortedLists.opaque.texture[folder][index]) {
+            const mat = this.assetManager.getMaterial(
+              prim.material.folder,
+              prim.material.index,
+            );
+            console.log("Texture primitive:", {
+              folder,
+              index,
+              hasBaseColor: "baseColorTexture" in mat.pbrMetallicRoughness,
+              hasNormal: "normalTexture" in mat,
+              hasMR: "metallicRoughnessTexture" in mat.pbrMetallicRoughness,
+              emissive: mat.emissiveFactor,
+            });
+          }
+        }
+      }
+
+      console.log("\n=== LIGHTS ===");
+      for (const light of sortedLists.light.pointLight) {
+        const mat = this.assetManager.getMaterial(
+          light.material.folder,
+          light.material.index,
+        );
+        console.log("Point light:", {
+          emissive: mat.emissiveFactor,
+          baseColor: mat.pbrMetallicRoughness?.baseColorFactor,
+          hasTexture: "lightTexture" in light,
+        });
+      }
+
+      return sortedLists;
+
       return sortedLists;
     }
 
@@ -1518,6 +1583,7 @@ const { Renderer, RenderComponent } = (function () {
           mesh: node.renderComponent.mesh,
           worldMatrix: node.worldMatrix,
           normalMatrix: normalMatrix,
+          light: node.renderComponent.light,
         });
       }
 
@@ -1666,6 +1732,7 @@ const { Renderer, RenderComponent } = (function () {
       // Solid colored primitives
       shader.setUniform("pbr_material.isTexture", false);
       shader.setUniform("pbr_material.isMRt", false);
+      shader.setUniform("isNormalMap", false);
       const solids = primitiveList.opaque.solid;
       for (const primitive of solids) {
         shader.setUniform("model", primitive.transform);

@@ -54,12 +54,14 @@ https://www.khanacademy.org/cs/i/5482258067734528
     // Load in a model
     renderer.assetManager.loadFromBase64('test-scene', testscene);
     let sceneGraph = renderer.scene.loadScene('test-scene/Scene');
-    //renderer.scene.camera.transform.setRotation(-90, 0, 0);
+    renderer.scene.camera.transform.setRotation(-90, 0, 0);
     renderer.render();
+
+    console.log(sceneGraph)
 
     
     // Initialize platformer
-    plat = new Platformer(0, 2, 0);
+    plat = new Platformer(0, 1, 0);
     plat.player.inventory.slots[0][0].content = new ItemInstance(proto1);
     plat.player.inventory.slots[0][0].amount = 1;
 
@@ -125,7 +127,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
       
       requestAnimationFrame(main);
     }
-    requestAnimationFrame(main);
+    //requestAnimationFrame(main);
   </script>
 </body>
 </html>
