@@ -1208,9 +1208,9 @@ const { Renderer, RenderComponent } = (function () {
       // Set directional light defaults
       this.directionalLight = {
         direction: glMatrix.vec3.fromValues(0.3, -0.5, -0.8),
-        ambient: glMatrix.vec3.fromValues(0.2, 0.2, 0.2),
-        diffuse: glMatrix.vec3.fromValues(0.8, 0.8, 0.8),
-        specular: glMatrix.vec3.fromValues(1.0, 1.0, 1.0),
+        ambient: glMatrix.vec3.fromValues(0.1, 0.1, 0.1),
+        diffuse: glMatrix.vec3.fromValues(0.2, 0.2, 0.2),
+        specular: glMatrix.vec3.fromValues(0.4, 0.4, 0.4),
       };
     }
     /** Utility function used for changing internal canvas sizes when canvas dimensions are changed. */
@@ -1387,8 +1387,15 @@ const { Renderer, RenderComponent } = (function () {
 
         // That is, get the primitives and sort them.
         for (const primitive of mesh.primitives) {
+          const material = this.assetManager.getMaterial(
+            primitive.material.folder,
+            primitive.material.index,
+          );
           // If not a light, check if can be frustum culled. (Lights must be in the scene even if not visible because they can influence visible objects' lighting.)
-          if (component.light == undefined) {
+          if (
+            material.emissiveFactor == undefined ||
+            JSON.stringify(material.emissiveFactor) == noEmissiveFactor
+          ) {
             /// BEGIN AI CODE - I was struggling with some bugs here and AI helped me get it correct.
             // Calculate center of the object in local coordinate space
             glMatrix.vec3.add(center, primitive.vMin, primitive.vMax);
@@ -1421,10 +1428,6 @@ const { Renderer, RenderComponent } = (function () {
             light: component.light,
           };
           // Get the material
-          const material = this.assetManager.getMaterial(
-            primitive.material.folder,
-            primitive.material.index,
-          );
 
           // Sort by material
           if (
@@ -1437,7 +1440,7 @@ const { Renderer, RenderComponent } = (function () {
             ) {
               primitiveInstance.light = {
                 lightType: "point",
-                lightRange: 10,
+                lightRange: 30,
               };
             }
             // This is a light
@@ -1504,7 +1507,7 @@ const { Renderer, RenderComponent } = (function () {
           }
         }
       }
-
+      /*
       // At the end of cullAndSortPrimitives, right before return sortedLists
       console.log("=== SORTED LISTS ===");
       console.log("Opaque Solid:", sortedLists.opaque.solid.length);
@@ -1559,7 +1562,7 @@ const { Renderer, RenderComponent } = (function () {
       }
 
       return sortedLists;
-
+      */
       return sortedLists;
     }
 
@@ -1807,6 +1810,7 @@ const { Renderer, RenderComponent } = (function () {
                 this.gl.bindTexture(this.gl.TEXTURE_2D, normTexLoc);
                 shader.setUniform("normalMap", 2);
                 lastBoundNormal = normTexLoc;
+                shader.setUniform("isNormalMap", false);
               }
             } else {
               shader.setUniform("isNormalMap", false);

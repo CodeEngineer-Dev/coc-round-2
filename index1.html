@@ -54,10 +54,12 @@ https://www.khanacademy.org/cs/i/5482258067734528
     // Load in a model
     renderer.assetManager.loadFromBase64('test-scene', testscene);
     let sceneGraph = renderer.scene.loadScene('test-scene/Scene');
-    renderer.scene.camera.transform.setRotation(-90, 0, 0);
+    renderer.scene.camera.transform.setTranslation(0, 2, 0);
+    renderer.scene.camera.transform.setRotation(0, 0, 0);
+    console.log("asadfa", sceneGraph)
+    sceneGraph[2].renderComponent.transform.setTranslation(-2, 2, -2);
+    sceneGraph[2].renderComponent.transform.setScale(0.1, 0.1, 0.1);
     renderer.render();
-
-    console.log(sceneGraph)
 
     
     // Initialize platformer
@@ -77,6 +79,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
     
     function main(timestamp) {
       ctx2D.clearRect(0, 0, overlay.width, overlay.height);
+      sceneGraph[2].renderComponent.transform.setTranslation(Math.cos(timestamp / 1000) * 2, 2, Math.sin(timestamp / 1000) * 2);
       updateDelta();
       plat.step();
       
@@ -127,7 +130,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
       
       requestAnimationFrame(main);
     }
-    //requestAnimationFrame(main);
+    requestAnimationFrame(main);
   </script>
 </body>
 </html>
