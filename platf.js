@@ -287,6 +287,20 @@ const { Block, Platformer } = (function () {
           p.inventory.selected = i - 1;
         }
       }
+
+      // Inventory item usage
+      if (events.MouseLeft && !eventsPrev.MouseLeft) {
+        const slot = p.inventory.slots[0][p.inventory.selected];
+        if (slot.content?.use) {
+          const consumed = slot.content.use();
+          if (consumed) {
+            slot.amount --;
+            if (slot.amount == 0) {
+              slot.content = null;
+            }
+          }
+        }
+      }
     }
   }
 

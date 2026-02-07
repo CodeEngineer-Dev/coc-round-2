@@ -28,8 +28,8 @@ const proto1 = new ItemPrototype(
     }
 );
 
-const proto2 = new ItemPrototype(
-    "1",
+const p_apple = new ItemPrototype(
+    "Apple",
     {
         stackable: true,
         iconGetter: function() {
@@ -38,6 +38,10 @@ const proto2 = new ItemPrototype(
         modelGetter: function() {
             throw "AAA";
         },
-        use: function() {},
+        use: function() {
+            plat.player.health += 15;
+            plat.player.health = Math.min(plat.player.health, plat.player.maxHealth);
+            return true;
+        },
     }
 );

@@ -24,7 +24,7 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
      ** stackable: Boolean, tells whether the item can be stacked (up to STACK_LIMIT)
      ** iconGetter: function, gets the texture in the hotbar
      ** modelGetter: function, gets the model used in the player's hand
-     ** use: when clicked with item, what does it do?
+     ** use: when clicked with item, what does it do? also returns boolean, telling if the item is consumed
      * 
      * @constructor
      * @param {String} name 
@@ -51,7 +51,7 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
     }
 
     use() {
-      this.attributes.use.call(this);
+      return this.attributes.use.call(this);
     }
   }
 

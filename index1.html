@@ -78,10 +78,10 @@ https://www.khanacademy.org/cs/i/5482258067734528
     plat.player.inventory.slots[0][0].content = new ItemInstance(proto1);
     plat.player.inventory.slots[0][0].amount = 1;
 
-    plat.player.inventory.slots[0][1].content = new ItemInstance(proto2);
+    plat.player.inventory.slots[0][1].content = new ItemInstance(p_apple);
     plat.player.inventory.slots[0][1].amount = 64;
 
-    plat.player.inventory.slots[0][2].content = new ItemInstance(proto2);
+    plat.player.inventory.slots[0][2].content = new ItemInstance(p_apple);
     plat.player.inventory.slots[0][2].amount = 64;
     
     // Add blocks
@@ -99,9 +99,10 @@ https://www.khanacademy.org/cs/i/5482258067734528
     }
     
     const sword = new RenderComponent("items/sword");
-    sword.transform.setRotation(5, -5, 0);
+    sword.transform.setScale(0.5, 0.5, 0.5);
     renderer.scene.addComponent(sword);
     
+    let angle = - Math.PI * 0.3;
     function main(timestamp) {
       ctx2D.clearRect(0, 0, overlay.width, overlay.height);
       updateDelta();
@@ -110,12 +111,25 @@ https://www.khanacademy.org/cs/i/5482258067734528
       // Orient camera
       plat.player.orient(renderer.scene.camera);
       
+      // ChatGPT helped me understand how to implement the quaternion math
       let forwardVec = renderer.scene.camera.transform.getForward();
+      let upVec = renderer.scene.camera.transform.getUp();
+      let scaledVec = glMatrix.vec3.create();
+      glMatrix.vec3.scale(scaledVec, upVec, 0.9);
+      glMatrix.vec3.sub(forwardVec, forwardVec, scaledVec); // set forwardVec to forwardVec - upVec * 0.9
       
       let playerTranslation = renderer.scene.camera.transform.translation;
-      let yAngle = glMatrix.quat.getAxisAngle([0, 1, 0], renderer.scene.camera.transform.rotation);
       
-      sword.transform.setPosition(playerTranslation[0], playerTranslation[1], playerTranslation[2]);
+      let rotor = glMatrix.quat.create();
+      glMatrix.quat.setAxisAngle(rotor, upVec, angle); // set rotor to rotate about upVec by angle
+      let playerRotation = renderer.scene.camera.transform.rotation;
+      glMatrix.vec3.transformQuat(forwardVec, forwardVec, rotor); // rotate the forwardVec by angle to move the sword to the right
+      sword.transform.setPosition(
+        playerTranslation[0] + forwardVec[0] * 0.7,
+        playerTranslation[1] + forwardVec[1] * 0.7,
+        playerTranslation[2] + forwardVec[2] * 0.7
+      );
+      sword.transform.setRotationQuaternion(playerRotation);
       
       events.dx = 0;
       events.dy = 0;
@@ -158,7 +172,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
 
       // Update prev events
       Object.assign(eventsPrev, events);
-      
+
       requestAnimationFrame(main);
     }
     requestAnimationFrame(main);
