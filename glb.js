@@ -159,7 +159,6 @@ const { Renderer, RenderComponent } = (function () {
      * @param {Uint8Array} binary Binary part of .glb file.
      */
     loadModel(name, json, binary) {
-      console.log(json);
       // Get the array of materials and add them to materials under a "folder".
       const materials = json.materials.map((material) => {
         return structuredClone(material);
@@ -257,6 +256,7 @@ const { Renderer, RenderComponent } = (function () {
         POSITION: 0,
         NORMAL: 1,
         TEXCOORD_0: 2,
+        TANGENT: 3,
       };
       // Map each JSON buffer to a buffer location on the GPU. Note that there is generally only one buffer for .glb files.
       const glBuffers = json.buffers.map((bufferInfo) => {
@@ -294,7 +294,7 @@ const { Renderer, RenderComponent } = (function () {
             // Getting minimum and maximum local coordinates for later use in frustum culling.
             let vMin = [0, 0, 0];
             let vMax = [0, 0, 0];
-            // Right now there are only three attributes being used: POSITION, NORMAL, and TEXCOORD_0.
+            // Right now there are only four attributes being used: POSITION, NORMAL, and TEXCOORD_0.
             Object.entries(primitive.attributes).forEach((param) => {
               // Get the accessor for the attribute.
               const [attributeName, accessorId] = param;
@@ -726,15 +726,19 @@ const { Renderer, RenderComponent } = (function () {
     }
 
     updateNodeWorldTransform(node, parentWorldMatrix) {
-      if (
-        (node.renderComponent.transform.isDirty || node.worldDirty) &&
-        parentWorldMatrix
-      ) {
-        glMatrix.mat4.multiply(
-          node.worldMatrix,
-          parentWorldMatrix,
-          node.renderComponent.transform.getTransformationMatrix(),
-        );
+      if (node.renderComponent.transform.isDirty || node.worldDirty) {
+        if (parentWorldMatrix) {
+          glMatrix.mat4.multiply(
+            node.worldMatrix,
+            parentWorldMatrix,
+            node.renderComponent.transform.getTransformationMatrix(),
+          );
+        } else {
+          glMatrix.mat4.copy(
+            node.worldMatrix,
+            node.renderComponent.transform.getTransformationMatrix(),
+          );
+        }
       }
 
       if ("children" in node) {
@@ -918,6 +922,7 @@ const { Renderer, RenderComponent } = (function () {
       layout (location = 0) in vec3 position;
       layout (location = 1) in vec3 normal;
       layout (location = 2) in vec2 texcoord_0;
+      layout (location = 3) in vec4 tangent;
 
       uniform mat4 viewProjection;
       uniform mat4 model;
@@ -928,12 +933,16 @@ const { Renderer, RenderComponent } = (function () {
       out vec2 v_texcoord_0;
       out vec3 v_normal;
       out vec3 v_fragPos;
+      out vec3 v_tangent;
+      out float v_tangent_sign;
 
       void main() {
           gl_Position = viewProjection * model * vec4(position, 1.0f);
-          v_normal = normalMatrix * normal;
+          v_normal = normalize(normalMatrix * normal);
           v_texcoord_0 = texcoord_0;
           v_fragPos = vec3(model * vec4(position, 1.0f));
+          v_tangent = normalize(normalMatrix * tangent.xyz);
+          v_tangent_sign = tangent.w;
       }
   `;
   // Point light fragment shader, used for lights because lights remain a constant color.
@@ -963,6 +972,8 @@ const { Renderer, RenderComponent } = (function () {
       in vec2 v_texcoord_0;
       in vec3 v_normal;
       in vec3 v_fragPos;
+      in vec3 v_tangent;
+      in float v_tangent_sign;
 
       out vec4 fragmentColor;
 
@@ -1098,6 +1109,9 @@ const { Renderer, RenderComponent } = (function () {
       return (ambient + diffuse + specular);
       }
 
+      uniform bool isNormalMap;
+      uniform sampler2D normalMap;
+
       void main() {
       Material material;
 
@@ -1129,7 +1143,20 @@ const { Renderer, RenderComponent } = (function () {
       material.ambient = material.diffuse * 0.1;
 
       // Normalize the normal vector and view direction.
-      vec3 norm = normalize(v_normal);
+      vec3 norm = v_normal;
+
+      if (isNormalMap) {
+        vec3 N = v_normal;
+        vec3 T = v_tangent;
+        vec3 B = normalize(v_tangent_sign * cross(N, T));
+
+        mat3 TBN = mat3(T, B, N);
+
+        vec3 normalTex = texture(normalMap, v_texcoord_0).xyz * 2.0 - 1.0;
+        vec3 worldNormal = normalize(TBN * normalTex);
+        norm = worldNormal;
+      }
+
       vec3 viewDir = normalize(viewPos - v_fragPos);
       
       // Total light equals the sums of all the lights.
@@ -1181,8 +1208,8 @@ const { Renderer, RenderComponent } = (function () {
       // Set directional light defaults
       this.directionalLight = {
         direction: glMatrix.vec3.fromValues(0.3, -0.5, -0.8),
-        ambient: glMatrix.vec3.fromValues(1.0, 1.0, 1.0),
-        diffuse: glMatrix.vec3.fromValues(1.0, 1.0, 1.0),
+        ambient: glMatrix.vec3.fromValues(0.2, 0.2, 0.2),
+        diffuse: glMatrix.vec3.fromValues(0.8, 0.8, 0.8),
         specular: glMatrix.vec3.fromValues(1.0, 1.0, 1.0),
       };
     }
@@ -1383,7 +1410,6 @@ const { Renderer, RenderComponent } = (function () {
             /// END AI CODE
             // Not in the frustum? Don't bother sorting it.
             if (!checkAllPlanes(center, radius)) {
-              console.log("culled");
               continue;
             }
           }
@@ -1670,9 +1696,9 @@ const { Renderer, RenderComponent } = (function () {
         this.gl.bindVertexArray(null);
       }
       // Textured primitives
-      let lastBoundAlbedo = "";
-      let lastBoundNormal = "";
-      let lastBoundRoughMetal = "";
+      let lastBoundAlbedo = null;
+      let lastBoundNormal = null;
+      let lastBoundRoughMetal = null;
 
       shader.setUniform("pbr_material.isTexture", true);
 
@@ -1702,6 +1728,22 @@ const { Renderer, RenderComponent } = (function () {
               primitive.material.folder,
               primitive.material.index,
             );
+
+            if ("normalTexture" in material) {
+              let normTexLoc = this.assetManager.getTexture(
+                folder,
+                Number(material.normalTexture.index),
+              );
+              if (normTexLoc != lastBoundNormal) {
+                shader.setUniform("isNormalMap", true);
+                this.gl.activeTexture(this.gl.TEXTURE2);
+                this.gl.bindTexture(this.gl.TEXTURE_2D, normTexLoc);
+                shader.setUniform("normalMap", 2);
+                lastBoundNormal = normTexLoc;
+              }
+            } else {
+              shader.setUniform("isNormalMap", false);
+            }
 
             if ("metallicRoughnessTexture" in material.pbrMetallicRoughness) {
               let texLoc = this.assetManager.getTexture(
@@ -1810,10 +1852,7 @@ const { Renderer, RenderComponent } = (function () {
           );
         }
 
-        shader.setUniform(
-          "model",
-          primitive.transform.getTransformationMatrix(),
-        );
+        shader.setUniform("model", primitive.transform);
 
         this.gl.bindVertexArray(primitive.vao);
         this.gl.drawElements(
@@ -1825,7 +1864,7 @@ const { Renderer, RenderComponent } = (function () {
         this.gl.bindVertexArray(null);
       }
       for (let primitive of primitiveList.light.spotLight) {
-        shader.setUniform("model", primitive.transform());
+        shader.setUniform("model", primitive.transform);
         shader.setUniform(
           "emissiveFactor",
           this.assetManager.getMaterial(

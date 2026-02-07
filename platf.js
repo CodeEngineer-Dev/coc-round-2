@@ -18,7 +18,7 @@ const { Block, Platformer } = (function () {
      * @param {Number} y
      * @param {Number} z
      */
-    constructor(x, y, z, w, l, h, renderComponent) {
+    constructor(x, y, z, w, h, l, renderComponent) {
       // Initiates x, y, z, and texture, creates hitbox
       this.x = x;
       this.y = y;
@@ -29,11 +29,14 @@ const { Block, Platformer } = (function () {
       this.renderComponent = renderComponent;
     }
 
-    static fromRenderComponent(w, l, h, renderComponent) {
+    static fromRenderComponent(w, h, l, renderComponent) {
       return new Block(
         renderComponent.transform.translation[0] - 0.5 * w,
         renderComponent.transform.translation[1] - 0.5 * h,
         renderComponent.transform.translation[2] - 0.5 * l,
+        w,
+        h,
+        l,
         renderComponent,
       );
     }
