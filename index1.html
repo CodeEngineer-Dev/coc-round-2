@@ -57,8 +57,8 @@ https://www.khanacademy.org/cs/i/5482258067734528
     renderer.scene.camera.transform.setTranslation(0, 2, 0);
     renderer.scene.camera.transform.setRotation(0, 0, 0);
     console.log("asadfa", sceneGraph)
-    sceneGraph[2].renderComponent.transform.setTranslation(-2, 2, -2);
-    sceneGraph[2].renderComponent.transform.setScale(0.1, 0.1, 0.1);
+    sceneGraph[1].renderComponent.transform.setTranslation(-2, 2, -2);
+    sceneGraph[1].renderComponent.transform.setScale(0.1, 0.1, 0.1);
     renderer.render();
 
     
@@ -76,10 +76,16 @@ https://www.khanacademy.org/cs/i/5482258067734528
     let testBlock = Block.fromRenderComponent(2, 1, 3, sceneGraph[0].renderComponent);
     plat.addBlock(testBlock);
     
+    for (const node of sceneGraph) {
+      if (node.name.includes('2x6')) {
+        let testBlock = Block.fromRenderComponent(2, 1, 3, node.renderComponent);
+        plat.addBlock(testBlock);
+      }
+    }
     
     function main(timestamp) {
       ctx2D.clearRect(0, 0, overlay.width, overlay.height);
-      sceneGraph[2].renderComponent.transform.setTranslation(Math.cos(timestamp / 1000) * 2, 2, Math.sin(timestamp / 1000) * 2);
+      sceneGraph[1].renderComponent.transform.setTranslation(Math.cos(timestamp / 1000) * 2, 2, Math.sin(timestamp / 1000) * 2);
       updateDelta();
       plat.step();
       
