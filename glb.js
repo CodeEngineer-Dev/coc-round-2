@@ -25,6 +25,11 @@ Dependencies:
 - UPNG. Used to convert arrays of bytes representing a PNG into a color byte array. https://cdnjs.cloudflare.com/ajax/libs/upng-js/2.1.0/UPNG.min.js
 - pako. A dependency of UPNG, used for inflating/compressing PNG data. https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js
 
+
+
+
+TODO: Add in tangents so that normals work properly.
+
 */
 const { Renderer, RenderComponent } = (function () {
   const MAX_POINT_LIGHTS = 10;
@@ -48,6 +53,8 @@ const { Renderer, RenderComponent } = (function () {
       this.meshes = {};
       this.materials = {};
       this.textures = {};
+      this.scenes = {};
+      this.nodes = {};
     }
     /**
      * Takes an array buffer representing a GLB file and splits it into its JSON and binary sections.
@@ -157,6 +164,7 @@ const { Renderer, RenderComponent } = (function () {
         return structuredClone(material);
       });
       this.materials[name] = materials;
+
       // Textures require images, samplers, and textures to exist in the JSON.
       if ("images" in json && "samplers" in json && "textures" in json) {
         // Load images
@@ -248,6 +256,7 @@ const { Renderer, RenderComponent } = (function () {
         POSITION: 0,
         NORMAL: 1,
         TEXCOORD_0: 2,
+        TANGENT: 3,
       };
       // Map each JSON buffer to a buffer location on the GPU. Note that there is generally only one buffer for .glb files.
       const glBuffers = json.buffers.map((bufferInfo) => {
@@ -285,7 +294,7 @@ const { Renderer, RenderComponent } = (function () {
             // Getting minimum and maximum local coordinates for later use in frustum culling.
             let vMin = [0, 0, 0];
             let vMax = [0, 0, 0];
-            // Right now there are only three attributes being used: POSITION, NORMAL, and TEXCOORD_0.
+            // Right now there are only four attributes being used: POSITION, NORMAL, and TEXCOORD_0.
             Object.entries(primitive.attributes).forEach((param) => {
               // Get the accessor for the attribute.
               const [attributeName, accessorId] = param;
@@ -344,6 +353,27 @@ const { Renderer, RenderComponent } = (function () {
       for (const mesh of meshes) {
         this.meshes[`${name}/${mesh.name}`] = mesh;
       }
+
+      // Now let's get the scene and it's nodes
+
+      const scenes = json.scenes.map((scene) => structuredClone(scene));
+      const nodes = structuredClone(json.nodes).map((node) => {
+        if ("mesh" in node) {
+          return {
+            ...node,
+            mesh: name + "/" + meshes[node.mesh].name,
+          };
+        } else {
+          return {
+            ...node,
+          };
+        }
+      });
+
+      for (const scene of scenes) {
+        this.scenes[`${name}/${scene.name}`] = scene;
+      }
+      this.nodes[name] = nodes;
     }
     /**
      * Return a mesh given a mesh path.
@@ -387,14 +417,23 @@ const { Renderer, RenderComponent } = (function () {
      *
      * @constructor
      */
-    constructor() {
-      this.translation = glMatrix.vec3.create();
-      this.rotation = glMatrix.quat.create();
-      this.scale = glMatrix.vec3.fromValues(1, 1, 1);
+    constructor(transforms = {}) {
+      this.translation =
+        "translation" in transforms
+          ? glMatrix.vec3.clone(transforms.translation)
+          : glMatrix.vec3.create();
+      this.rotation =
+        "rotation" in transforms
+          ? glMatrix.quat.clone(transforms.rotation)
+          : glMatrix.quat.create();
+      this.scale =
+        "scale" in transforms
+          ? glMatrix.vec3.clone(transforms.scale)
+          : glMatrix.vec3.fromValues(1, 1, 1);
       this.matrix = glMatrix.mat4.create();
       this.normalMatrix = glMatrix.mat3.create();
       // Used to determine if the matrix needs recalculation after transforms change.
-      this.isDirty = false;
+      this.isDirty = true;
       this.utilMatrix = glMatrix.mat4.create();
       this.globalForward = glMatrix.vec3.fromValues(0, 0, -1);
       this.globalUp = glMatrix.vec3.fromValues(0, 1, 0);
@@ -410,7 +449,7 @@ const { Renderer, RenderComponent } = (function () {
      * @param {number} y
      * @param {number} z
      */
-    setPosition(x, y, z) {
+    setTranslation(x, y, z) {
       glMatrix.vec3.set(this.translation, x, y, z);
       this.isDirty = true;
     }
@@ -557,10 +596,10 @@ const { Renderer, RenderComponent } = (function () {
      * @param {?outerCutOff} [light.outerCutOff] Used for spot lights, cosine of angle in radians at which spotlight ends completely
      *
      */
-    constructor(meshPath, light) {
+    constructor(meshPath, transforms, light) {
       this.mesh = meshPath;
-      this.transform = new Transform();
-      this.light = light ?? undefined;
+      this.transform = new Transform(transforms);
+      this.light = light || null;
     }
   }
   /**
@@ -614,9 +653,10 @@ const { Renderer, RenderComponent } = (function () {
      *
      * @constructor
      */
-    constructor() {
+    constructor(assetManager) {
       this.componentList = [];
       this.camera = new Camera();
+      this.assetManager = assetManager;
     }
     /**
      * Add render component to scene list
@@ -638,6 +678,81 @@ const { Renderer, RenderComponent } = (function () {
         this.componentList[entityIndex] =
           this.componentList[this.componentList.length - 1];
         this.componentList.pop();
+      }
+    }
+    crawlNode(nodeList, node, parent = null) {
+      if ("camera" in node) {
+        this.camera.transform.setTranslation(
+          ...(node.translation ? node.translation : [0, 0, 0]),
+        );
+        this.camera.transform.setRotationQuaternion(
+          ...(node.rotation ? node.rotation : glMatrix.quat.create()),
+        );
+        this.camera.transform.setScale(
+          ...(node.scale ? node.scale : [1, 1, 1]),
+        );
+      } else {
+        let renderComponent = new RenderComponent(node.mesh ?? null, node);
+        renderComponent.transform.isDirty = true;
+
+        let obj = {
+          name: node.name,
+          renderComponent,
+          parent,
+          worldMatrix: glMatrix.mat4.create(),
+          worldDirty: true,
+        };
+
+        if ("children" in node) {
+          obj.children = node.children.map((childNodeIndex) =>
+            this.crawlNode(nodeList, nodeList[childNodeIndex], obj),
+          );
+        }
+
+        return obj;
+      }
+    }
+
+    loadScene(scenePath) {
+      for (let nodeIndex of this.assetManager.scenes[scenePath].nodes) {
+        let node = this.assetManager.nodes[scenePath.split("/")[0]][nodeIndex];
+        let convertedNode = this.crawlNode(
+          this.assetManager.nodes[scenePath.split("/")[0]],
+          node,
+        );
+        if (convertedNode) this.componentList.push(convertedNode);
+      }
+      return this.componentList;
+    }
+
+    updateNodeWorldTransform(node, parentWorldMatrix) {
+      if (node.renderComponent.transform.isDirty || node.worldDirty) {
+        if (parentWorldMatrix) {
+          glMatrix.mat4.multiply(
+            node.worldMatrix,
+            parentWorldMatrix,
+            node.renderComponent.transform.getTransformationMatrix(),
+          );
+        } else {
+          glMatrix.mat4.copy(
+            node.worldMatrix,
+            node.renderComponent.transform.getTransformationMatrix(),
+          );
+        }
+      }
+
+      if ("children" in node) {
+        for (const child of node.children) {
+          child.worldDirty = true;
+          this.updateNodeWorldTransform(child, node.worldMatrix);
+        }
+      }
+
+      node.worldDirty = false;
+    }
+    updateNodesTree() {
+      for (const node of this.componentList) {
+        this.updateNodeWorldTransform(node);
       }
     }
   }
@@ -807,6 +922,7 @@ const { Renderer, RenderComponent } = (function () {
       layout (location = 0) in vec3 position;
       layout (location = 1) in vec3 normal;
       layout (location = 2) in vec2 texcoord_0;
+      layout (location = 3) in vec4 tangent;
 
       uniform mat4 viewProjection;
       uniform mat4 model;
@@ -817,12 +933,16 @@ const { Renderer, RenderComponent } = (function () {
       out vec2 v_texcoord_0;
       out vec3 v_normal;
       out vec3 v_fragPos;
+      out vec3 v_tangent;
+      out float v_tangent_sign;
 
       void main() {
           gl_Position = viewProjection * model * vec4(position, 1.0f);
-          v_normal = normalMatrix * normal;
+          v_normal = normalize(normalMatrix * normal);
           v_texcoord_0 = texcoord_0;
           v_fragPos = vec3(model * vec4(position, 1.0f));
+          v_tangent = normalize(normalMatrix * tangent.xyz);
+          v_tangent_sign = tangent.w;
       }
   `;
   // Point light fragment shader, used for lights because lights remain a constant color.
@@ -852,6 +972,8 @@ const { Renderer, RenderComponent } = (function () {
       in vec2 v_texcoord_0;
       in vec3 v_normal;
       in vec3 v_fragPos;
+      in vec3 v_tangent;
+      in float v_tangent_sign;
 
       out vec4 fragmentColor;
 
@@ -863,9 +985,11 @@ const { Renderer, RenderComponent } = (function () {
       vec4 albedo;
       float metalness;
       sampler2D albedoMap;
+      sampler2D MRmap;
       float roughness;
 
       bool isTexture;
+      bool isMRt;
       };
       uniform PBR_Material pbr_material;
 
@@ -985,8 +1109,22 @@ const { Renderer, RenderComponent } = (function () {
       return (ambient + diffuse + specular);
       }
 
+      uniform bool isNormalMap;
+      uniform sampler2D normalMap;
+
       void main() {
       Material material;
+
+      float metalness;
+      float roughness;
+
+      if (pbr_material.isMRt) {
+        roughness = texture(pbr_material.MRmap, v_texcoord_0).g;
+        metalness = texture(pbr_material.MRmap, v_texcoord_0).b;
+      } else {
+        roughness = pbr_material.roughness;
+        metalness = pbr_material.metalness;
+      }
 
       // Because glb gives PBR materials by default, I need to convert to glb. I used AI to help me figure out how to convert PBR to Phong.
       if (pbr_material.isTexture) {
@@ -995,17 +1133,30 @@ const { Renderer, RenderComponent } = (function () {
               discard;
           }
 
-          material.diffuse = texture(pbr_material.albedoMap, v_texcoord_0).rgb * (1.0 - pbr_material.metalness);
-          material.specular = mix(vec3(0.04), texture(pbr_material.albedoMap, v_texcoord_0).rgb, pbr_material.metalness);
+          material.diffuse = texture(pbr_material.albedoMap, v_texcoord_0).rgb * (1.0 - metalness);
+          material.specular = mix(vec3(0.04), texture(pbr_material.albedoMap, v_texcoord_0).rgb, metalness);
       } else {
-          material.diffuse = pbr_material.albedo.rgb * (1.0 - pbr_material.metalness);
-          material.specular = mix(vec3(0.04), pbr_material.albedo.rgb, pbr_material.metalness);
+          material.diffuse = pbr_material.albedo.rgb * (1.0 - metalness);
+          material.specular = mix(vec3(0.04), pbr_material.albedo.rgb, metalness);
       }
-      material.shininess = pow(2.0, 10.0 * (1.0 - pbr_material.roughness));
-      material.ambient = material.diffuse * 0.3;
+      material.shininess = pow(2.0, 10.0 * (1.0 - roughness));
+      material.ambient = material.diffuse * 0.1;
 
       // Normalize the normal vector and view direction.
-      vec3 norm = normalize(v_normal);
+      vec3 norm = v_normal;
+
+      if (isNormalMap) {
+        vec3 N = v_normal;
+        vec3 T = v_tangent;
+        vec3 B = normalize(v_tangent_sign * cross(N, T));
+
+        mat3 TBN = mat3(T, B, N);
+
+        vec3 normalTex = texture(normalMap, v_texcoord_0).xyz * 2.0 - 1.0;
+        vec3 worldNormal = normalize(TBN * normalTex);
+        norm = worldNormal;
+      }
+
       vec3 viewDir = normalize(viewPos - v_fragPos);
       
       // Total light equals the sums of all the lights.
@@ -1048,7 +1199,7 @@ const { Renderer, RenderComponent } = (function () {
 
       // Get asset manager and scene
       this.assetManager = new AssetManager(this.gl);
-      this.scene = new Scene();
+      this.scene = new Scene(this.assetManager);
       // Compile shader programs
       this.shader = {
         phong: new Shader(this.gl, basicVS, phongFS),
@@ -1057,9 +1208,9 @@ const { Renderer, RenderComponent } = (function () {
       // Set directional light defaults
       this.directionalLight = {
         direction: glMatrix.vec3.fromValues(0.3, -0.5, -0.8),
-        ambient: glMatrix.vec3.fromValues(1.0, 1.0, 1.0),
-        diffuse: glMatrix.vec3.fromValues(1.0, 1.0, 1.0),
-        specular: glMatrix.vec3.fromValues(1.0, 1.0, 1.0),
+        ambient: glMatrix.vec3.fromValues(0.1, 0.1, 0.1),
+        diffuse: glMatrix.vec3.fromValues(0.2, 0.2, 0.2),
+        specular: glMatrix.vec3.fromValues(0.4, 0.4, 0.4),
       };
     }
     /** Utility function used for changing internal canvas sizes when canvas dimensions are changed. */
@@ -1074,12 +1225,13 @@ const { Renderer, RenderComponent } = (function () {
       }
       this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
     }
+
     /**
      * Gets list of primitives, frustum culls non-visible primitives, and sorts them into categories for more efficient rendering.
      *
      * @returns {{ opaque: { solid: {}; texture: {}; }; light: { pointLight: {}; spotLight: {}; }; }}
      */
-    cullAndSortPrimitives() {
+    cullAndSortPrimitives(flatList) {
       const sortedLists = {
         opaque: {
           solid: [],
@@ -1230,28 +1382,36 @@ const { Renderer, RenderComponent } = (function () {
       // Some meshes have emissive factors set to zero. Use this variable to check for those.
       let noEmissiveFactor = JSON.stringify([0, 0, 0]);
       // Now sort the components
-      for (const component of this.scene.componentList) {
+      for (const component of flatList) {
         const mesh = this.assetManager.meshes[component.mesh];
+
         // That is, get the primitives and sort them.
         for (const primitive of mesh.primitives) {
+          const material = this.assetManager.getMaterial(
+            primitive.material.folder,
+            primitive.material.index,
+          );
           // If not a light, check if can be frustum culled. (Lights must be in the scene even if not visible because they can influence visible objects' lighting.)
-          if (component.light == undefined) {
+          if (
+            material.emissiveFactor == undefined ||
+            JSON.stringify(material.emissiveFactor) == noEmissiveFactor
+          ) {
             /// BEGIN AI CODE - I was struggling with some bugs here and AI helped me get it correct.
             // Calculate center of the object in local coordinate space
             glMatrix.vec3.add(center, primitive.vMin, primitive.vMax);
             glMatrix.vec3.scale(center, center, 0.5);
             // Transform that center to world space using the transformation matrix of the component
-            glMatrix.vec3.transformMat4(
-              center,
-              center,
-              component.transform.getTransformationMatrix(),
-            );
+            glMatrix.vec3.transformMat4(center, center, component.worldMatrix);
             // Take a cross-diagonal of the AABB box, make half of that the radius, and multiply it by the largest scale to get a guarenteed complete bounding sphere.
             glMatrix.vec3.sub(ds, primitive.vMax, primitive.vMin);
+
+            let componentScale = glMatrix.vec3.create();
+            glMatrix.mat4.getScaling(componentScale, component.worldMatrix);
+
             const maxScale = Math.max(
-              component.transform.scale[0],
-              component.transform.scale[1],
-              component.transform.scale[2],
+              componentScale[0],
+              componentScale[1],
+              componentScale[2],
             );
             radius = (glMatrix.vec3.len(ds) / 2) * maxScale;
             /// END AI CODE
@@ -1263,25 +1423,32 @@ const { Renderer, RenderComponent } = (function () {
           // Give the primitive necessary info for drawing.
           const primitiveInstance = {
             ...primitive,
-            transform: component.transform,
+            transform: component.worldMatrix,
+            normalMatrix: component.normalMatrix,
             light: component.light,
           };
           // Get the material
-          const material = this.assetManager.getMaterial(
-            primitive.material.folder,
-            primitive.material.index,
-          );
+
           // Sort by material
           if (
             material.emissiveFactor != undefined &&
-            JSON.stringify(material.emissiveFactor) != noEmissiveFactor &&
-            primitiveInstance.light != undefined
+            JSON.stringify(material.emissiveFactor) != noEmissiveFactor
           ) {
+            if (
+              primitiveInstance.light == null ||
+              primitiveInstance.light == undefined
+            ) {
+              primitiveInstance.light = {
+                lightType: "point",
+                lightRange: 30,
+              };
+            }
             // This is a light
             if ("emissiveTexture" in material) {
               // This is a lighted texture
               let folder = primitive.material.folder;
               let index = material.emissiveTexture.index;
+
               primitiveInstance.lightTexture = {
                 folder,
                 index,
@@ -1340,13 +1507,108 @@ const { Renderer, RenderComponent } = (function () {
           }
         }
       }
+      /*
+      // At the end of cullAndSortPrimitives, right before return sortedLists
+      console.log("=== SORTED LISTS ===");
+      console.log("Opaque Solid:", sortedLists.opaque.solid.length);
+      console.log(
+        "Opaque Texture folders:",
+        Object.keys(sortedLists.opaque.texture),
+      );
+      for (const folder in sortedLists.opaque.texture) {
+        for (const index in sortedLists.opaque.texture[folder]) {
+          console.log(
+            `  ${folder}[${index}]:`,
+            sortedLists.opaque.texture[folder][index].length,
+            "primitives",
+          );
+        }
+      }
+      console.log("Point Lights:", sortedLists.light.pointLight.length);
+      console.log("Spot Lights:", sortedLists.light.spotLight.length);
+
+      // Log details of each category
+      console.log("\n=== TEXTURED PRIMITIVES ===");
+      for (const folder in sortedLists.opaque.texture) {
+        for (const index in sortedLists.opaque.texture[folder]) {
+          for (const prim of sortedLists.opaque.texture[folder][index]) {
+            const mat = this.assetManager.getMaterial(
+              prim.material.folder,
+              prim.material.index,
+            );
+            console.log("Texture primitive:", {
+              folder,
+              index,
+              hasBaseColor: "baseColorTexture" in mat.pbrMetallicRoughness,
+              hasNormal: "normalTexture" in mat,
+              hasMR: "metallicRoughnessTexture" in mat.pbrMetallicRoughness,
+              emissive: mat.emissiveFactor,
+            });
+          }
+        }
+      }
+
+      console.log("\n=== LIGHTS ===");
+      for (const light of sortedLists.light.pointLight) {
+        const mat = this.assetManager.getMaterial(
+          light.material.folder,
+          light.material.index,
+        );
+        console.log("Point light:", {
+          emissive: mat.emissiveFactor,
+          baseColor: mat.pbrMetallicRoughness?.baseColorFactor,
+          hasTexture: "lightTexture" in light,
+        });
+      }
+
+      return sortedLists;
+      */
       return sortedLists;
     }
+
+    flattenNode(node) {
+      let list = [];
+      if ("children" in node) {
+        for (const child of node.children) {
+          list.push(...this.flattenNode(child));
+        }
+      }
+      if (node.renderComponent.mesh) {
+        let normalMatrix = glMatrix.mat3.create();
+        let utilMatrix = glMatrix.mat4.create();
+
+        // Invert the matrix, transpose it, and take the upper 3x3 to get the normal matrix.
+        glMatrix.mat4.invert(utilMatrix, node.worldMatrix);
+        glMatrix.mat4.transpose(utilMatrix, utilMatrix);
+        glMatrix.mat3.fromMat4(normalMatrix, utilMatrix);
+
+        list.push({
+          mesh: node.renderComponent.mesh,
+          worldMatrix: node.worldMatrix,
+          normalMatrix: normalMatrix,
+          light: node.renderComponent.light,
+        });
+      }
+
+      return list;
+    }
+    flattenSceneList(list) {
+      let flatList = [];
+      for (const child of list) {
+        flatList.push(...this.flattenNode(child));
+      }
+      return flatList;
+    }
+
     /** Render the scene! */
     render() {
       this.resizeCanvas();
+
+      this.scene.updateNodesTree();
+      let flatList = this.flattenSceneList(this.scene.componentList);
+
       // Get a list.
-      const primitiveList = this.cullAndSortPrimitives();
+      const primitiveList = this.cullAndSortPrimitives(flatList);
       // Clear the canvas
       this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
       this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
@@ -1416,10 +1678,9 @@ const { Renderer, RenderComponent } = (function () {
           `pointLights[${lightIndex}].quadratic`,
           75 / (light.light?.lightRange * light.light?.lightRange),
         );
-        shader.setUniform(
-          `pointLights[${lightIndex}].position`,
-          light.transform?.translation,
-        );
+        let translation = glMatrix.vec3.create();
+        glMatrix.mat4.getTranslation(translation, light.transform);
+        shader.setUniform(`pointLights[${lightIndex}].position`, translation);
       }
       // Set number of spot lights.
       if (primitiveList.light.spotLight.length > MAX_SPOT_LIGHTS)
@@ -1454,10 +1715,9 @@ const { Renderer, RenderComponent } = (function () {
           `spotLights[${lightIndex}].quadratic`,
           75 / (light.light?.lightRange * light.light?.lightRange),
         );
-        shader.setUniform(
-          `spotLights[${lightIndex}].position`,
-          light.transform?.translation,
-        );
+        let translation = glMatrix.vec3.create();
+        glMatrix.mat4.getTranslation(translation, light.transform);
+        shader.setUniform(`spotLights[${lightIndex}].position`, translation);
         shader.setUniform(
           `spotLights[${lightIndex}].direction`,
           light.light?.direction,
@@ -1474,16 +1734,12 @@ const { Renderer, RenderComponent } = (function () {
 
       // Solid colored primitives
       shader.setUniform("pbr_material.isTexture", false);
+      shader.setUniform("pbr_material.isMRt", false);
+      shader.setUniform("isNormalMap", false);
       const solids = primitiveList.opaque.solid;
       for (const primitive of solids) {
-        shader.setUniform(
-          "model",
-          primitive.transform.getTransformationMatrix(),
-        );
-        shader.setUniform(
-          "normalMatrix",
-          primitive.transform.getNormalMatrix(),
-        );
+        shader.setUniform("model", primitive.transform);
+        shader.setUniform("normalMatrix", primitive.normalMatrix);
         const material = this.assetManager.getMaterial(
           primitive.material.folder,
           primitive.material.index,
@@ -1510,37 +1766,82 @@ const { Renderer, RenderComponent } = (function () {
         this.gl.bindVertexArray(null);
       }
       // Textured primitives
+      let lastBoundAlbedo = null;
+      let lastBoundNormal = null;
+      let lastBoundRoughMetal = null;
+
       shader.setUniform("pbr_material.isTexture", true);
+
       const textures = primitiveList.opaque.texture;
       for (const folder in textures) {
         for (const index in textures[folder]) {
-          this.gl.activeTexture(this.gl.TEXTURE0);
-          this.gl.bindTexture(
-            this.gl.TEXTURE_2D,
-            this.assetManager.getTexture(folder, Number(index)),
-          );
-          shader.setUniform("pbr_material.albedoMap", 0);
+          if (
+            this.assetManager.getTexture(folder, Number(index)) !=
+            lastBoundAlbedo
+          ) {
+            this.gl.activeTexture(this.gl.TEXTURE0);
+            this.gl.bindTexture(
+              this.gl.TEXTURE_2D,
+              this.assetManager.getTexture(folder, Number(index)),
+            );
+            shader.setUniform("pbr_material.albedoMap", 0);
+            lastBoundAlbedo = this.assetManager.getTexture(
+              folder,
+              Number(index),
+            );
+          }
+
           for (const primitive of textures[folder][index]) {
-            shader.setUniform(
-              "model",
-              primitive.transform.getTransformationMatrix(),
-            );
-            shader.setUniform(
-              "normalMatrix",
-              primitive.transform.getNormalMatrix(),
-            );
+            shader.setUniform("model", primitive.transform);
+            shader.setUniform("normalMatrix", primitive.normalMatrix);
             const material = this.assetManager.getMaterial(
               primitive.material.folder,
               primitive.material.index,
             );
-            shader.setUniform(
-              "pbr_material.metalness",
-              material?.pbrMetallicRoughness.metallicFactor ?? 0,
-            );
-            shader.setUniform(
-              "pbr_material.roughness",
-              material?.pbrMetallicRoughness.roughnessFactor ?? 0,
-            );
+
+            if ("normalTexture" in material) {
+              let normTexLoc = this.assetManager.getTexture(
+                folder,
+                Number(material.normalTexture.index),
+              );
+              if (normTexLoc != lastBoundNormal) {
+                shader.setUniform("isNormalMap", true);
+                this.gl.activeTexture(this.gl.TEXTURE2);
+                this.gl.bindTexture(this.gl.TEXTURE_2D, normTexLoc);
+                shader.setUniform("normalMap", 2);
+                lastBoundNormal = normTexLoc;
+                shader.setUniform("isNormalMap", false);
+              }
+            } else {
+              shader.setUniform("isNormalMap", false);
+            }
+
+            if ("metallicRoughnessTexture" in material.pbrMetallicRoughness) {
+              let texLoc = this.assetManager.getTexture(
+                folder,
+                Number(
+                  material.pbrMetallicRoughness.metallicRoughnessTexture.index,
+                ),
+              );
+              if (texLoc != lastBoundRoughMetal) {
+                shader.setUniform("pbr_material.isMRt", true);
+                this.gl.activeTexture(this.gl.TEXTURE1);
+                this.gl.bindTexture(this.gl.TEXTURE_2D, texLoc);
+                shader.setUniform("pbr_material.MRmap", 1);
+                lastBoundRoughMetal = texLoc;
+              }
+            } else {
+              shader.setUniform("pbr_material.isMRt", false);
+              shader.setUniform(
+                "pbr_material.metalness",
+                material?.pbrMetallicRoughness.metallicFactor ?? 0,
+              );
+              shader.setUniform(
+                "pbr_material.roughness",
+                material?.pbrMetallicRoughness.roughnessFactor ?? 0,
+              );
+            }
+
             this.gl.bindVertexArray(primitive.vao);
             this.gl.drawElements(
               primitive.mode,
@@ -1566,14 +1867,8 @@ const { Renderer, RenderComponent } = (function () {
           shader.setUniform("pbr_material.albedoMap", 0);
 
           for (const primitive of texturedTransparents[folder][index]) {
-            shader.setUniform(
-              "model",
-              primitive.transform.getTransformationMatrix(),
-            );
-            shader.setUniform(
-              "normalMatrix",
-              primitive.transform.getNormalMatrix(),
-            );
+            shader.setUniform("model", primitive.transform);
+            shader.setUniform("normalMatrix", primitive.normalMatrix);
             const material = this.assetManager.getMaterial(
               primitive.material.folder,
               primitive.material.index,
@@ -1628,10 +1923,7 @@ const { Renderer, RenderComponent } = (function () {
           );
         }
 
-        shader.setUniform(
-          "model",
-          primitive.transform.getTransformationMatrix(),
-        );
+        shader.setUniform("model", primitive.transform);
 
         this.gl.bindVertexArray(primitive.vao);
         this.gl.drawElements(
@@ -1643,10 +1935,7 @@ const { Renderer, RenderComponent } = (function () {
         this.gl.bindVertexArray(null);
       }
       for (let primitive of primitiveList.light.spotLight) {
-        shader.setUniform(
-          "model",
-          primitive.transform.getTransformationMatrix(),
-        );
+        shader.setUniform("model", primitive.transform);
         shader.setUniform(
           "emissiveFactor",
           this.assetManager.getMaterial(

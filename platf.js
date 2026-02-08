@@ -18,28 +18,27 @@ const { Block, Platformer } = (function () {
      * @param {Number} y
      * @param {Number} z
      */
-    constructor(x, y, z, mesh, rendererScene) {
+    constructor(x, y, z, w, h, l, renderComponent) {
       // Initiates x, y, z, and texture, creates hitbox
       this.x = x;
       this.y = y;
       this.z = z;
-      this.hbox = new CubicHitbox(x, y, z, x + 1, y + 1, z + 1);
+      this.hbox = new CubicHitbox(x, y, z, x + w, y + h, z + l);
 
       // Assign render component to block
-      this.renderComponent = new RenderComponent(mesh);
+      this.renderComponent = renderComponent;
+    }
 
-      // Since the cube model is drawn around local origin, offset by 1/2 to align to hitbox.
-      this.renderComponent.transform.setPosition(
-        this.hbox.x1 + 0.5,
-        this.hbox.y1 + 0.5,
-        this.hbox.z1 + 0.5,
+    static fromRenderComponent(w, h, l, renderComponent) {
+      return new Block(
+        renderComponent.transform.translation[0] - 0.5 * w,
+        renderComponent.transform.translation[1] - 0.5 * h,
+        renderComponent.transform.translation[2] - 0.5 * l,
+        w,
+        h,
+        l,
+        renderComponent,
       );
-
-      // Since cube model is drawn as a -1 to 1 box, it needs to be half size.
-      this.renderComponent.transform.setScale(0.5, 0.5, 0.5);
-
-      // Add it to the scene
-      this.addToScene(rendererScene);
     }
 
     /** Adds the block to the scene.
@@ -48,7 +47,6 @@ const { Block, Platformer } = (function () {
      */
     addToScene(scene) {
       // addComponent to the renderer's scene
-      scene.addComponent(this.renderComponent);
     }
   }
 
@@ -103,7 +101,7 @@ const { Block, Platformer } = (function () {
     orient(camera) {
       this.resetHitbox();
       // Sets camera position
-      camera.transform.setPosition(
+      camera.transform.setTranslation(
         this.hbox.x1 + Player.width / 2,
         this.hbox.y1 + Player.height - 0.3, // Same change as in the constructor!
         this.hbox.z1 + Player.width / 2,
@@ -282,7 +280,7 @@ const { Block, Platformer } = (function () {
       }
 
       // Digits (to change inventory slot)
-      for (let i = 1; i <= 9 && i <= p.inventory.slots[0].length; i ++) {
+      for (let i = 1; i <= 9 && i <= p.inventory.slots[0].length; i++) {
         if (events[`Digit${i}`]) {
           p.inventory.selected = i - 1;
         }
