@@ -29,15 +29,18 @@ const { Block, Platformer } = (function () {
       this.renderComponent = renderComponent;
     }
 
-    static fromRenderComponent(w, h, l, renderComponent) {
+    static fromNode(w, h, l, node) {
+      // This moves a vector to where the block is, and then puts the block there
+      const vec = glMatrix.vec4.fromValues(0, 0, 0, 1);
+      glMatrix.vec4.transformMat4(vec, vec, node.worldMatrix); // vec = node.worldMatrix * vec
       return new Block(
-        renderComponent.transform.translation[0] - 0.5 * w,
-        renderComponent.transform.translation[1] - 0.5 * h,
-        renderComponent.transform.translation[2] - 0.5 * l,
+        vec[0] - 0.5 * w,
+        vec[1] - 0.5 * h,
+        vec[2] - 0.5 * l,
         w,
         h,
         l,
-        renderComponent,
+        node.renderComponent,
       );
     }
 

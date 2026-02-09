@@ -88,12 +88,12 @@ https://www.khanacademy.org/cs/i/5482258067734528
       }
     }*/
     const flattened = renderer.flattenSceneList(sceneGraph);
-    for (const element of flattened) {
-      // THIS IS NOT WORKING YET. The thing needs to have full support for parent nodes and scene graphs, or something
-      // I'll figure it out later
-      plat.addBlock(Block.fromRenderComponent(1, 1, 1, element.renderComponent));
+    for (const node of flattened) {
+      console.log(node)
+      if (node.mesh.startsWith("test-scene/Cube") && node.mesh != "test-scene/Cube.002") {
+        plat.addBlock(Block.fromNode(1, 1, 1, node));
+      }
     }
-    
     renderer.scene.addComponent(held);
     
     let angle = - Math.PI * 0.3;

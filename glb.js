@@ -1591,13 +1591,11 @@ const { Renderer, RenderComponent } = (function () {
         glMatrix.mat4.transpose(utilMatrix, utilMatrix);
         glMatrix.mat3.fromMat4(normalMatrix, utilMatrix);
 
-        list.push({
-          renderComponent: node.renderComponent,
-          mesh: node.renderComponent.mesh,
-          worldMatrix: node.worldMatrix,
-          normalMatrix: normalMatrix,
-          light: node.renderComponent.light,
-        });
+        node.normalMatrix = normalMatrix;
+        node.mesh = node.renderComponent.mesh;
+        node.light = node.renderComponent.light;
+
+        list.push(node);
       }
 
       return list;
