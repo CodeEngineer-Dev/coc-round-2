@@ -32,7 +32,7 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
      ** stackable: Boolean, tells whether the item can be stacked (up to STACK_LIMIT)
      ** iconGetter: function, gets the texture in the hotbar
      ** model: function, puts the model of the item in the right hand
-     ** use: when clicked with item, what does it do? also returns boolean, telling if the item is consumed
+     ** use: when clicked with item, what does it do? requires param user, also returns boolean, telling if the item is consumed
      * 
      * @constructor
      * @param {String} name 
@@ -79,8 +79,8 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
      * 
      * @returns {Boolean}
      */
-    use() {
-      return this.attributes.use.call(this);
+    use(user) {
+      return this.attributes.use.call(this, user);
     }
   }
 

@@ -217,7 +217,7 @@ const { Block, Entity, NPC, Platformer } = (function () {
       if (events.MouseLeft && !eventsPrev.MouseLeft) {
         const slot = this.inventory.slots[0][this.inventory.selected];
         if (slot.content?.use) {
-          const consumed = slot.content.use();
+          const consumed = slot.content.use(this);
           if (consumed) {
             slot.amount --;
             if (slot.amount == 0) {
@@ -270,7 +270,6 @@ const { Block, Entity, NPC, Platformer } = (function () {
         this.y + this.constructor.height / 2,
         this.z + this.constructor.width / 2
       );
-      console.log(this.renderComponent.transform)
       this.renderComponent.transform.setRotation(0, 0, this.yaw);
     }
 

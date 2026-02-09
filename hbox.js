@@ -50,3 +50,108 @@ class CubicHitbox {
     this.z2 = Math.max(z1, z2);
   }
 }
+
+/** Ray. CAN ONLY TEST WITH CubicHitbox (because, frankly, there's no need to test with itself)
+ * 
+ * @class Ray
+ * @typedef {Ray}
+ */
+class Ray {
+  /** Creates an instance of Ray. CAN ONLY TEST WITH CubicHitbox.
+   * 
+   * @param {Number} x 
+   * @param {Number} y 
+   * @param {Number} z 
+   * @param {Number} yaw 
+   * @param {Number} pitch 
+   */
+  constructor(x, y, z, yaw, pitch) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    // Forward vector
+    this.fx = -Math.sin(yaw) * Math.cos(pitch);
+    this.fy = Math.sin(pitch);
+    this.fz = -Math.cos(yaw) * Math.cos(pitch);
+  }
+
+  /** Tests collisions with a cubic hitbox.
+   * 
+   * @param {CubicHitbox} cubic 
+   * @returns {Object}
+   */
+  collide(cubic) {
+    // Credits to ChatGPT for suggesting slab intersection method.
+    // xyzyyxx wrote the code himself though.
+    let ignoreX, ignoreY, ignoreZ;
+
+    // X slab
+    if (this.fx == 0) {
+      if (this.x >= cubic.x1 && this.x <= cubic.x2) ignoreX = true;
+      else return { t: Infinity };
+    }
+    const xt1 = (cubic.x1 - this.x) / this.fx;
+    const xt2 = (cubic.x2 - this.x) / this.fx;
+
+    // Y slab
+    if (this.fy == 0) {
+      if (this.y >= cubic.y1 && this.y <= cubic.y2) ignoreY = true;
+      else return { t: Infinity };
+    }
+    const yt1 = (cubic.y1 - this.y) / this.fy;
+    const yt2 = (cubic.y2 - this.y) / this.fy;
+
+    // Z slab
+    if (this.fz == 0) {
+      if (this.z >= cubic.z1 && this.z <= cubic.z2) ignoreZ = true;
+      else return { t: Infinity };
+    }
+    const zt1 = (cubic.z1 - this.z) / this.fz;
+    const zt2 = (cubic.z2 - this.z) / this.fz;
+
+    // Enter and exit time
+    const enterT = Math.max(
+      ignoreX ? -Infinity : Math.min(xt1, xt2),
+      ignoreY ? -Infinity : Math.min(yt1, yt2),
+      ignoreZ ? -Infinity : Math.min(zt1, zt2)
+    );
+    const exitT = Math.min(
+      ignoreX ? +Infinity : Math.max(xt1, xt2),
+      ignoreY ? +Infinity : Math.max(yt1, yt2),
+      ignoreZ ? +Infinity : Math.max(zt1, zt2)
+    );
+
+    if (enterT > exitT || exitT < 0) {
+      return { t: Infinity };
+    } else {
+      const t = Math.max(enterT, 0);
+      const x = this.x + this.fx * t;
+      const y = this.y + this.fy * t;
+      const z = this.z + this.fz * t;
+      return { t, x, y, z };
+    }
+  }
+
+  collideEntities(entities) {
+    // If there are no entities, then it returns a null result
+    // Otherwise, it takes each entity, maps it to { entity: entity, data: collision data with ray },
+    // then uses .reduce to find the closest collision.
+    return (
+      entities.length == 0 ? { entity: null, data: { t: Infinity } } :
+      entities.map(entity => ({ entity: entity, data: this.collide(entity.hbox)}))
+              .reduce((best, cur) => cur.data.t < best.data.t ? cur : best)
+    );
+  }
+}
+
+/** Sweep. CAN ONLY TEST WITH CubicHitbox (because, frankly, there's no need to test with itself)
+ * 
+ * @class Sweep
+ * @typedef {Sweep}
+ */
+class Sweep {
+  // i'll save this for later
+  constructor(x, y, z, yaw, pitch) {
+
+  }
+}

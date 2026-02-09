@@ -82,7 +82,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
     }
     const npc1 = new NPC(-3, 20, 0, new RenderComponent("test-scene/Untitled"));
     npc1.setAI(function(plat) {
-      return {Space: true, dx: 0, dy: 0};
+      return { Space: true, dx: 0, dy: 0 };
     });
     plat.entities.push(npc1);
     plat.entities[0].addToScene(renderer.scene);
@@ -118,6 +118,14 @@ https://www.khanacademy.org/cs/i/5482258067734528
       // Inventory
       plat.player.inventory.dispUpd();
       
+      // Crosshair
+      ctx2D.strokeStyle = "#ffffff";
+      ctx2D.lineWidth = 2;
+      ctx2D.beginPath();
+      ctx2D.moveTo(overlay.width / 2 - 5, overlay.height / 2);
+      ctx2D.lineTo(overlay.width / 2 + 5, overlay.height / 2);
+      ctx2D.stroke();
+
       // Handle death
       if (plat.player.health <= 0) {
         // Red overlay

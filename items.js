@@ -59,8 +59,15 @@ const proto1 = new ItemPrototype(
       const attackThing = 1 - Math.min(Math.pow((Date.now() - (this.data.lastUse ?? -Infinity)) / 250, 0.5), 1);
       positionHeld(-0.9, (attackThing * 1.25 - 1) * Math.PI * 0.3, attackThing * 2, - attackThing / 5, attackThing);
     },
-    use: function() {
+    use: function(user) {
       this.data.lastUse = Date.now();
+      const ray = new Ray(
+        user.x + user.constructor.width / 2,
+        user.y + user.constructor.height - 0.3,
+        user.z + user.constructor.width / 2,
+        user.yaw, user.pitch
+      );
+      console.log(ray.collideEntities([...plat.blocks, ...plat.entities]));
     },
   }
 );
@@ -74,9 +81,9 @@ const p_apple = new ItemPrototype(
     },
     model: function() {
     },
-    use: function() {
-      plat.player.health += 15;
-      plat.player.health = Math.min(plat.player.health, plat.player.maxHealth);
+    use: function(user) {
+      user.health += 15;
+      user.health = Math.min(user.health, user.maxHealth);
       return true;
     },
   }
