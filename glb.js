@@ -664,7 +664,16 @@ const { Renderer, RenderComponent } = (function () {
      * @param {RenderComponent} component
      */
     addComponent(component) {
-      this.componentList.push(component);
+      if (component instanceof RenderComponent) {
+        this.componentList.push({
+          name: "who cares lol",
+          renderComponent: component,
+          parent: null,
+          worldMatrix: glMatrix.mat4.create()
+        });
+      } else {
+        this.componentList.push(component);
+      }
     }
     /**
      * Remove render component from scene list
@@ -1583,6 +1592,7 @@ const { Renderer, RenderComponent } = (function () {
         glMatrix.mat3.fromMat4(normalMatrix, utilMatrix);
 
         list.push({
+          renderComponent: node.renderComponent,
           mesh: node.renderComponent.mesh,
           worldMatrix: node.worldMatrix,
           normalMatrix: normalMatrix,
