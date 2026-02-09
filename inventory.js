@@ -1,3 +1,6 @@
+// Held item
+const held = new RenderComponent("items/sword");
+
 /**
  * A lot of the inventory code was borrowed from xyzyyxx's other project,
  * mainly because he did not want to write it again.
@@ -17,8 +20,13 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
   const IMG_PADDING = 5;
   const PADDING = 20;
 
+  /** Item prototype, basically a type of item (eg golden apple, dagger, etc)
+   *
+   * @class ItemPrototype
+   * @typedef {ItemPrototype}
+   */
   class ItemPrototype {
-    /** Item prototype, basically a type of item (eg golden apple, dagger, etc)
+    /** Constructs an ItemPrototype
      * attributes: object containing info about the item
      * useful attributes:
      ** stackable: Boolean, tells whether the item can be stacked (up to STACK_LIMIT)
@@ -35,28 +43,61 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
       this.attributes = attributes;
     }
   }
+  /** Item instance, basically an instance of a type of item
+   *
+   * @class ItemPrototype
+   * @typedef {ItemPrototype}
+   */
   class ItemInstance {
+    /** Constructs an ItemInstance
+     * 
+     * @constructor
+     * @param {ItemPrototype} prototype
+     */
     constructor(prototype) {
       this.proto = prototype;
       this.name = prototype.name;
-      this.attributes = prototype.attributes;
-      this.data = Object.create(null);
+      this.attributes = prototype.attributes; // Per-prototype attributes
+      this.data = Object.create(null); // Per-instance data
     }
 
+    /** Gets icon.
+     * 
+     */
     get icon() {
       return this.attributes.iconGetter.call(this);
     }
 
+    /** Puts the held item in the correct position.
+     * 
+     */
     model() {
       this.attributes.model.call(this);
     }
 
+    /** Uses item. Returns boolean, telling if the item is consumed.
+     * 
+     * @returns {Boolean}
+     */
     use() {
       return this.attributes.use.call(this);
     }
   }
 
+  /** Slot in the inventory.
+   * 
+   * @class Slot
+   * @typedef {Slot}
+   */
   class Slot {
+    /** Constructs slot.
+     * 
+     * @constructor
+     * @param {Number} x1 
+     * @param {Number} y1 
+     * @param {Number} x2 
+     * @param {Number} y2 
+     */
     constructor(x1, y1, x2, y2) {
       this.x1 = x1;
       this.y1 = y1;
@@ -66,6 +107,10 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
       this.amount = 0;
     }
     
+    /** Tells whether the pointer is hovering the slot.
+     * 
+     * @returns {Boolean}
+     */
     isHovered() {
       return mouseX > this.x1 &&
         mouseY > this.y1 &&
@@ -85,11 +130,11 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
      * @constructor
      */
     constructor() {
-      this.selected = 0;
-      this.slots = [[]];
+      this.selected = 0; // Selected slot in hotbar
+      this.slots = [[]]; // First row is hotbar. Next three are the inventory.
       this.opened = false;
-      this.itemDraggedContent = null;
-      this.itemDraggedAmount = 0;
+      this.itemDraggedContent = null; // When dragging an item, these two variables
+      this.itemDraggedAmount = 0; // say what is being dragged.
 
       // Initial x, y to begin drawing hotbar and inventory
       const ix = (overlay.width - NUM_COLS * SLOT_SIZE) / 2;
@@ -120,6 +165,7 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
         }
       }
 
+      // Tells where to display the inventory.
       this.ix = ix;
       this.iyHotbar = iyHotbar;
       this.iyInventory = iyInventory;
@@ -143,11 +189,13 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
     
     // Display item
     displayItem(icon, amount, x, y) {
+      // Draws the image
       ctx2D.drawImage(
         icon,
         x + IMG_PADDING, y + IMG_PADDING,
         SLOT_SIZE - 2 * IMG_PADDING, SLOT_SIZE - 2 * IMG_PADDING
       );
+      // Draws text if more than 1 item
       if (amount != 1) {
         ctx2D.fillStyle = "#ffffff";
         ctx2D.textAlign = "center";
@@ -164,6 +212,7 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
       ctx2D.lineWidth = 4;
       ctx2D.fillStyle = "#0000007f";
       ctx2D.imageSmoothingEnabled = false;
+      
       // Draw hotbar
       for (const slot of this.slots[0]) {
         ctx2D.beginPath();

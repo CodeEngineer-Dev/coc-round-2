@@ -57,7 +57,6 @@ https://www.khanacademy.org/cs/i/5482258067734528
     let sceneGraph = renderer.scene.loadScene('test-scene/Scene');
     renderer.scene.camera.transform.setTranslation(0, 2, 0);
     renderer.scene.camera.transform.setRotation(0, 0, 0);
-    console.log("asadfa", sceneGraph)
     sceneGraph[1].renderComponent.transform.setTranslation(-2, 2, -2);
     sceneGraph[1].renderComponent.transform.setScale(0.1, 0.1, 0.1);
     renderer.render();
@@ -75,28 +74,14 @@ https://www.khanacademy.org/cs/i/5482258067734528
     plat.player.inventory.slots[0][2].amount = 64;
     
     // Add blocks
-    /*for (let i = -5; i < 5; i++) {
-      for (let j = -5; j < 5; j++) {
-        let maxk = Math.round(Math.random() * 5);
-        if (i == 0 && j == 0) {
-          maxk = 10;
-        }
-        for (let k = -1; k < maxk; k ++) {
-          if (k == maxk - 1) {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/grass', renderer.scene));}
-          else {plat.addBlock(new Block(i * 1, k, j * 1, 'blocks/dirt', renderer.scene));}
-        }
-      }
-    }*/
     const flattened = renderer.flattenSceneList(sceneGraph);
     for (const node of flattened) {
-      console.log(node)
       if (node.mesh.startsWith("test-scene/Cube") && node.mesh != "test-scene/Cube.002") {
         plat.addBlock(Block.fromNode(1, 1, 1, node));
       }
     }
     renderer.scene.addComponent(held);
     
-    let angle = - Math.PI * 0.3;
     function main(timestamp) {
       ctx2D.clearRect(0, 0, overlay.width, overlay.height);
       sceneGraph[1].renderComponent.transform.setTranslation(Math.cos(timestamp / 1000) * 2, 2, Math.sin(timestamp / 1000) * 2);
