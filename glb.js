@@ -1217,7 +1217,7 @@ const { Renderer, RenderComponent } = (function () {
       // Set directional light defaults
       this.directionalLight = {
         direction: glMatrix.vec3.fromValues(0.3, -0.5, -0.8),
-        ambient: glMatrix.vec3.fromValues(0.1, 0.1, 0.1),
+        ambient: glMatrix.vec3.fromValues(1, 1, 1),
         diffuse: glMatrix.vec3.fromValues(0.2, 0.2, 0.2),
         specular: glMatrix.vec3.fromValues(0.4, 0.4, 0.4),
       };

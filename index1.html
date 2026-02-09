@@ -51,6 +51,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
   <script type>
     // Initialize a renderer
     const renderer = new Renderer('canvas');
+    renderer.assetManager.loadFromBase64('blocks', itemsBase64);
     renderer.assetManager.loadFromBase64('items', itemsBase64);
     // Load in a model
     renderer.assetManager.loadFromBase64('test-scene', testscene);
@@ -60,7 +61,6 @@ https://www.khanacademy.org/cs/i/5482258067734528
     sceneGraph[1].renderComponent.transform.setTranslation(-2, 2, -2);
     sceneGraph[1].renderComponent.transform.setScale(0.1, 0.1, 0.1);
     renderer.render();
-
     
     // Initialize platformer
     plat = new Platformer(0, 3, 0);
@@ -80,8 +80,13 @@ https://www.khanacademy.org/cs/i/5482258067734528
         plat.addBlock(Block.fromNode(1, 1, 1, node));
       }
     }
-    renderer.scene.addComponent(held);
-    
+    const npc1 = new NPC(-3, 20, 0, new RenderComponent("test-scene/Untitled"));
+    npc1.setAI(function(plat) {
+      return {Space: true, dx: 0, dy: 0};
+    });
+    plat.entities.push(npc1);
+    plat.entities[0].addToScene(renderer.scene);
+
     function main(timestamp) {
       ctx2D.clearRect(0, 0, overlay.width, overlay.height);
       sceneGraph[1].renderComponent.transform.setTranslation(Math.cos(timestamp / 1000) * 2, 2, Math.sin(timestamp / 1000) * 2);
@@ -93,9 +98,15 @@ https://www.khanacademy.org/cs/i/5482258067734528
       
       const current = plat.player.inventory.slots[0][plat.player.inventory.selected].content;
       if (current?.model) {
+        if (renderer.scene.componentList.filter(node => node.renderComponent == held).length == 0) {
+          renderer.scene.addComponent(held);
+        }
         current.model();
       } else {
-        // get rid of the thing
+        const matching = renderer.scene.componentList.filter(node => node.renderComponent == held);
+        if (matching.length) {
+          renderer.scene.removeComponent(matching[0]);
+        }
       }
 
       events.dx = 0;

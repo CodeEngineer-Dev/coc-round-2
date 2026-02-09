@@ -1,6 +1,6 @@
-const { Block, Platformer } = (function () {
+const { Block, Entity, NPC, Platformer } = (function () {
   // Constants
-  const HVEL = 3; // PLEASE ADJUST AS NECESSARY, I HAVE NOT PLAYTESTED THESE CONSTANTS MAINLY
+  const HVEL = 4; // PLEASE ADJUST AS NECESSARY, I HAVE NOT PLAYTESTED THESE CONSTANTS MAINLY
   const JUMP = 10; // BECAUSE I HAVE NO IDEA HOW TO ADD A BLOCK TO THE SCENE.
   const GRAV = -30;
   const SENS = Math.PI / 250; // mouse sensitivity
@@ -54,9 +54,6 @@ const { Block, Platformer } = (function () {
    * @typedef {Entity}
    */
   class Entity {
-    static width = 0.7;
-    static height = 1.8;
-
     /** Creates an instance of Entity.
      *
      * @constructor
@@ -232,6 +229,60 @@ const { Block, Platformer } = (function () {
     }
   }
 
+  /** Non-player character, for use in the platforming engine
+   *
+   * @class NPC
+   * @typedef {NPC}
+   */
+  class NPC extends Entity {
+    static width = 1;
+    static height = 0.75;
+
+    /** Creates an instance of NPC.
+     *
+     * @constructor
+     * @param {Number} x
+     * @param {Number} y
+     * @param {Number} z
+     */
+    constructor(x, y, z, renderComponent) {
+      super(x, y, z);
+      this.renderComponent = renderComponent;
+      this.ai = function(plat) {
+        return {dx: 0, dy: 0};
+      };
+    }
+
+    /** Adds the NPC to the scene.
+     *
+     * @param {Scene} scene
+     */
+    addToScene(scene) {
+      scene.addComponent(this.renderComponent);
+    }
+
+    /** Updates render component.
+     *
+     */
+    updateRenderComponent() {
+      this.renderComponent.transform.setTranslation(
+        this.x + this.constructor.width / 2,
+        this.y + this.constructor.height / 2,
+        this.z + this.constructor.width / 2
+      );
+      console.log(this.renderComponent.transform)
+      this.renderComponent.transform.setRotation(0, 0, this.yaw);
+    }
+
+    /** Sets ai. Takes function (plat) { return events; }.
+     * 
+     * @param {Function} ai 
+     */
+    setAI(ai) {
+      this.ai = ai;
+    }
+  }
+
   /** Player, for use in the platforming engine
    *
    * @class Player
@@ -329,10 +380,11 @@ const { Block, Platformer } = (function () {
     step() {
       this.player.step(this, events);
       for (const entity of this.entities) {
-        entity.step(this, {});
+        entity.step(this, entity.ai.call(entity, this));
+        entity.updateRenderComponent();
       }
     }
   }
 
-  return { Block, Platformer };
+  return { Block, Entity, NPC, Platformer };
 })();
