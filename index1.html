@@ -48,18 +48,14 @@ https://www.khanacademy.org/cs/i/5482258067734528
   <script type src="platf.js"></script>
   <script type src="models.js"></script>
   <script type src="base64files.js"></script>
+  <script type src="dungeon.js"></script>
   <script type>
     // Initialize a renderer
     const renderer = new Renderer('canvas');
     // Load in a model
     renderer.assetManager.loadFromBase64('test-scene', testscene);
-    let sceneGraph = renderer.scene.loadScene('test-scene/Scene');
-    renderer.scene.camera.transform.setTranslation(0, 2, 0);
-    renderer.scene.camera.transform.setRotation(0, 0, 0);
-    console.log("asadfa", sceneGraph)
-    sceneGraph[1].renderComponent.transform.setTranslation(-2, 2, -2);
-    sceneGraph[1].renderComponent.transform.setScale(0.1, 0.1, 0.1);
-    renderer.render();
+    renderer.assetManager.loadFromBase64('items', items)
+    console.log(rooms);
 
     
     // Initialize platformer
@@ -72,7 +68,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
 
     plat.player.inventory.slots[0][2].content = new ItemInstance(p_apple);
     plat.player.inventory.slots[0][2].amount = 64;
-
+/*
     let testBlock = Block.fromRenderComponent(2, 1, 3, sceneGraph[0].renderComponent);
     plat.addBlock(testBlock);
     
@@ -81,9 +77,14 @@ https://www.khanacademy.org/cs/i/5482258067734528
         let testBlock = Block.fromRenderComponent(2, 1, 3, node.renderComponent);
         plat.addBlock(testBlock);
       }
-    }
+    }*/
+   
     
-    let angle = - Math.PI * 0.3;
+    let angle = - Math.PI * 0.2;
+    const sword = new RenderComponent("items/sword");
+    renderer.scene.addComponent({ name: "sword", renderComponent: sword, parent: null, worldMatrix: glMatrix.mat4.create() });
+    console.log(sword)
+
     function main(timestamp) {
       ctx2D.clearRect(0, 0, overlay.width, overlay.height);
       sceneGraph[1].renderComponent.transform.setTranslation(Math.cos(timestamp / 1000) * 2, 2, Math.sin(timestamp / 1000) * 2);
@@ -106,7 +107,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
       glMatrix.quat.setAxisAngle(rotor, upVec, angle); // set rotor to rotate about upVec by angle
       let playerRotation = renderer.scene.camera.transform.rotation;
       glMatrix.vec3.transformQuat(forwardVec, forwardVec, rotor); // rotate the forwardVec by angle to move the sword to the right
-      sword.transform.setPosition(
+      sword.transform.setTranslation(
         playerTranslation[0] + forwardVec[0] * 0.7,
         playerTranslation[1] + forwardVec[1] * 0.7,
         playerTranslation[2] + forwardVec[2] * 0.7
@@ -157,7 +158,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
 
       requestAnimationFrame(main);
     }
-    requestAnimationFrame(main);
+    //requestAnimationFrame(main);
   </script>
 </body>
 </html>
