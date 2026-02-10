@@ -132,6 +132,8 @@ https://www.khanacademy.org/cs/i/5482258067734528
         let z_pos = Math.floor(i / DUNGEON_WIDTH);
 
         if (bitData.isWall === 0) {
+          plat.spawnX = x_pos - 0.5;
+          plat.spawnZ = z_pos - 0.5;
           plat.player.x = x_pos - 0.5;
           plat.player.z = z_pos - 0.5;
         }
@@ -266,7 +268,6 @@ https://www.khanacademy.org/cs/i/5482258067734528
           plat.player.resetHitbox();
         }
       }
-      console.log(plat.player.y);
       // Draw pointer (if in use)
       drawPointer();
 
