@@ -54,10 +54,11 @@ https://www.khanacademy.org/cs/i/5482258067734528
     const renderer = new Renderer('canvas');
     renderer.assetManager.loadFromBase64('blocks', blocksBase64);
     renderer.assetManager.loadFromBase64('items', itemsBase64);
+    renderer.assetManager.loadFromBase64('lights', lightBase64);
     console.log(renderer.assetManager)
     
     // Initialize platformer
-    plat = new Platformer(0, 3, 0);
+    plat = new Platformer(0, 1, 0);
     plat.player.inventory.slots[0][0].content = new ItemInstance(proto1);
     plat.player.inventory.slots[0][0].amount = 1;
 
@@ -68,12 +69,95 @@ https://www.khanacademy.org/cs/i/5482258067734528
     plat.player.inventory.slots[0][2].amount = 64;
 
    console.log(generateDungeonMap())
+   let dungeonBitmap = generateDungeonMap();
    /*
-   types: 
+   types: 1-9
+   1: grass
+   2: stone
+   3: brick
+   4: cobblestone
+   5: white
+   6: purple
+   7: blue
+   8: dirt
+   9: stone
+
+   height: 4-9
+   - no 1 is always floor
+   - no n is always ceiling
+
+   isWall: if 1, all intermediate blocks are also filled in
    
+   effect: 1-4
+
+   Available constants: DUNGEON_WIDTH, DUNGEON_HEIGHT
    */
-    
-    // Add blocks
+    var typeToFloor = {
+      1: 'blocks/Dirt',
+      2: 'blocks/Stone',
+      3: 'blocks/Brick',
+      4: 'blocks/Cobblestone',
+      5: 'blocks/Wood',
+      6: 'blocks/Grass',
+      7: 'blocks/White',
+      8: 'blocks/Purple',
+      9: 'blocks/Blue'
+    };
+    var effectToName = {
+      1: '',
+      2: '-Moss',
+      3: '-Vines',
+      4: '-Moss-Vines'
+    };
+    var typeToWall = {
+      1: 'blocks/Dirt',
+      2: 'blocks/Stone',
+      3: 'blocks/Brick',
+      4: 'blocks/Cobblestone',
+      5: 'blocks/Wood',
+      6: 'blocks/Dirt',
+      7: 'blocks/Dirt',
+      8: 'blocks/Dirt',
+      9: 'blocks/Dirt'
+    }
+
+    for (let i in dungeonBitmap) {
+      let bit = dungeonBitmap[i];
+
+      if (bit !== 0) {
+        let bitData = interpretBit(bit);
+
+        let x_pos = i % DUNGEON_WIDTH;
+        let z_pos = Math.floor(i / DUNGEON_WIDTH);
+
+        if (bitData.isWall === 0) {
+          plat.player.x = x_pos - 0.5;
+          plat.player.z = z_pos - 0.5;
+        }
+        
+        let floorMeshName = typeToFloor[bitData.type] + effectToName[bitData.effect];
+        
+
+
+        let floor = new RenderComponent(floorMeshName, {translation: [x_pos, 0, z_pos]});
+        renderer.scene.addComponent(floor);
+
+        let ceiling = new RenderComponent(floorMeshName, {translation: [x_pos, bitData.height, z_pos]});
+        renderer.scene.addComponent(ceiling);
+
+        plat.addBlock(new Block(x_pos - 0.5, 0 - 0.5, z_pos - 0.5, 1, 1, 1));
+        plat.addBlock(new Block(x_pos - 0.5, bitData.height - 0.5, z_pos - 0.5, 1, 1, 1));
+
+        if (bitData.isWall == 1) {
+          let wallMeshName = typeToWall[bitData.type] + effectToName[bitData.effect];
+          for (let i = 1; i < bitData.height; i++) {
+            let wall = new RenderComponent(wallMeshName, {translation: [x_pos, i, z_pos]});
+            renderer.scene.addComponent(wall);
+            plat.addBlock(new Block(x_pos - 0.5, i - 0.5, z_pos - 0.5, 1, 1, 1));
+          }
+        }
+      }
+    }
 
     const npc1 = new NPC(-3, 20, 0, new RenderComponent("items/rat"));
     npc1.setAI(function(plat) {
@@ -82,14 +166,29 @@ https://www.khanacademy.org/cs/i/5482258067734528
     plat.entities.push(npc1);
     plat.entities[0].addToScene(renderer.scene);
 
+    const playerSpotLight = new RenderComponent('lights/Cube', {translation: [plat.player.x + 0.5, plat.player.y - 1, plat.player.z + 0.5]}, {lightType: "spot", lightRange: 80, direction: [1, 0, 0], cutOff: Math.cos(Math.PI / 12), outerCutOff: Math.cos(Math.PI / 6)});
+    playerSpotLight.transform.setScale(0.1, 0.1, 0.1);
+    renderer.scene.addComponent(playerSpotLight);
+
+     const playerPointLight = new RenderComponent('lights/Cube', {translation: [plat.player.x + 0.5, plat.player.y - 1, plat.player.z + 0.5]}, {lightType: "point", lightRange: 20, direction: [1, 0, 0], cutOff: Math.cos(Math.PI / 12), outerCutOff: Math.cos(Math.PI / 6)});
+    playerSpotLight.transform.setScale(0.1, 0.1, 0.1);
+    renderer.scene.addComponent(playerPointLight);
+
     function main(timestamp) {
       ctx2D.clearRect(0, 0, overlay.width, overlay.height);
       
       updateDelta();
       plat.step();
+
+      plat.player.orient(renderer.scene.camera);
+
+      playerSpotLight.transform.setTranslation(plat.player.x + 0.35, plat.player.y + 1.5, plat.player.z + 0.35);
+      playerSpotLight.light.direction = renderer.scene.camera.transform.getForward();
+
+      playerPointLight.transform.setTranslation(plat.player.x + 0.35, plat.player.y + 1.5, plat.player.z + 0.35);
       
       // Orient camera
-      plat.player.orient(renderer.scene.camera);
+      
       
       const current = plat.player.inventory.slots[0][plat.player.inventory.selected].content;
       if (current?.model) {
@@ -154,7 +253,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
       // Update prev events
       Object.assign(eventsPrev, events);
 
-      //requestAnimationFrame(main);
+      requestAnimationFrame(main);
     }
     requestAnimationFrame(main);
   </script>

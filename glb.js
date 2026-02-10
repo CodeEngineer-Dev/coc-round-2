@@ -669,7 +669,7 @@ const { Renderer, RenderComponent } = (function () {
           name: "who cares lol",
           renderComponent: component,
           parent: null,
-          worldMatrix: glMatrix.mat4.create()
+          worldMatrix: glMatrix.mat4.create(),
         });
       } else {
         this.componentList.push(component);
@@ -1217,9 +1217,9 @@ const { Renderer, RenderComponent } = (function () {
       // Set directional light defaults
       this.directionalLight = {
         direction: glMatrix.vec3.fromValues(0.3, -0.5, -0.8),
-        ambient: glMatrix.vec3.fromValues(1, 1, 1),
-        diffuse: glMatrix.vec3.fromValues(0.2, 0.2, 0.2),
-        specular: glMatrix.vec3.fromValues(0.4, 0.4, 0.4),
+        ambient: glMatrix.vec3.fromValues(0.0, 0.0, 0.0),
+        diffuse: glMatrix.vec3.fromValues(0.0, 0.0, 0.0),
+        specular: glMatrix.vec3.fromValues(0.0, 0.0, 0.0),
       };
     }
     /** Utility function used for changing internal canvas sizes when canvas dimensions are changed. */
