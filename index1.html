@@ -52,16 +52,9 @@ https://www.khanacademy.org/cs/i/5482258067734528
   <script type>
     // Initialize a renderer
     const renderer = new Renderer('canvas');
-    renderer.assetManager.loadFromBase64('blocks', itemsBase64);
+    renderer.assetManager.loadFromBase64('blocks', blocksBase64);
     renderer.assetManager.loadFromBase64('items', itemsBase64);
-    // Load in a model
-    renderer.assetManager.loadFromBase64('test-scene', testscene);
-    let sceneGraph = renderer.scene.loadScene('test-scene/Scene');
-    renderer.scene.camera.transform.setTranslation(0, 2, 0);
-    renderer.scene.camera.transform.setRotation(0, 0, 0);
-    sceneGraph[1].renderComponent.transform.setTranslation(-2, 2, -2);
-    sceneGraph[1].renderComponent.transform.setScale(0.1, 0.1, 0.1);
-    renderer.render();
+    console.log(renderer.assetManager)
     
     // Initialize platformer
     plat = new Platformer(0, 3, 0);
@@ -73,19 +66,16 @@ https://www.khanacademy.org/cs/i/5482258067734528
 
     plat.player.inventory.slots[0][2].content = new ItemInstance(p_apple);
     plat.player.inventory.slots[0][2].amount = 64;
-/*
-    let testBlock = Block.fromRenderComponent(2, 1, 3, sceneGraph[0].renderComponent);
-    plat.addBlock(testBlock);
-    */
+
+   console.log(generateDungeonMap())
+   /*
+   types: 
+   
+   */
     
     // Add blocks
-    const flattened = renderer.flattenSceneList(sceneGraph);
-    for (const node of flattened) {
-      if (node.mesh.startsWith("test-scene/Cube") && node.mesh != "test-scene/Cube.002") {
-        plat.addBlock(Block.fromNode(1, 1, 1, node));
-      }
-    }
-    const npc1 = new NPC(-3, 20, 0, new RenderComponent("test-scene/Untitled"));
+
+    const npc1 = new NPC(-3, 20, 0, new RenderComponent("items/rat"));
     npc1.setAI(function(plat) {
       return { Space: true, dx: 0, dy: 0 };
     });
@@ -94,7 +84,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
 
     function main(timestamp) {
       ctx2D.clearRect(0, 0, overlay.width, overlay.height);
-      sceneGraph[1].renderComponent.transform.setTranslation(Math.cos(timestamp / 1000) * 2, 2, Math.sin(timestamp / 1000) * 2);
+      
       updateDelta();
       plat.step();
       
@@ -164,7 +154,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
       // Update prev events
       Object.assign(eventsPrev, events);
 
-      requestAnimationFrame(main);
+      //requestAnimationFrame(main);
     }
     requestAnimationFrame(main);
   </script>

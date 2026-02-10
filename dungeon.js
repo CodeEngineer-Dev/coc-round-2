@@ -1,4 +1,4 @@
-let rooms = (function () {
+let [generateDungeonMap, interpretBit] = (function () {
   var WIDTH = 128;
   var HEIGHT = 128;
 
@@ -65,10 +65,6 @@ let rooms = (function () {
       back: null,
     };
   }
-
-  // Split room
-  var bsp = generateBSP(0, 0, WIDTH, HEIGHT);
-
   function generateRooms(bsp) {
     if (bsp.front !== null && bsp.back !== null) {
       return {
@@ -92,8 +88,6 @@ let rooms = (function () {
       };
     }
   }
-
-  var rooms = generateRooms(bsp);
   function rectangleOverlap(c1, s1, c2, s2) {
     if (c1 > c2 + s2 || c1 + s1 < c2) {
       return false;
@@ -101,7 +95,6 @@ let rooms = (function () {
       return true;
     }
   }
-
   function generateDungeon(rooms) {
     if ("x" in rooms) {
       return [
@@ -235,7 +228,7 @@ let rooms = (function () {
         w = corridorW;
         h = 4;
       } else {
-        fill(255, 0, 0); /* AI CODE */
+        //fill(255, 0, 0); /* AI CODE */
         var p1x = x1 + Math.floor(w1 / 2);
         var p1y = y1 + Math.floor(h1 / 2);
         var p2x = x2 + Math.floor(w2 / 2);
@@ -245,13 +238,13 @@ let rooms = (function () {
         var hx = Math.min(p1x, p2x);
         var hw = Math.abs(p2x - p1x) + 4;
 
-        rect(hx, p1y, hw, 4);
+        //rect(hx, p1y, hw, 4);
 
         // vertical second (overlap guaranteed)
         var vy = Math.min(p1y, p2y);
         var vh = Math.abs(p2y - p1y) + 4;
 
-        rect(p2x, vy, 4, vh); /* END AI CODE */
+        //rect(p2x, vy, 4, vh); /* END AI CODE */
 
         return []
           .concat(frontRooms)
@@ -268,8 +261,58 @@ let rooms = (function () {
         .concat([{ x: x, y: y, w: w, h: h }]);
     }
   }
+  function generateBitmap(rooms) {
+    var bitmap = new Array(WIDTH * HEIGHT).fill(0);
+    rooms.forEach(function (room) {
+      var roomType = 100 * (Math.floor(Math.random() * 9) + 1);
+      var roomHeight = (Math.floor(Math.random() * 9) + 1) * 10;
+      var isWall = 0;
+      for (var i = room.x; i < room.x + room.w; i++) {
+        for (var j = room.y; j < room.y + room.h; j++) {
+          bitmap[j * WIDTH + i] = roomType + roomHeight + isWall;
+        }
+      }
+    });
+    for (var i = 0; i < bitmap.length; i++) {
+      if (bitmap[i] !== 0) {
+        if (
+          bitmap[i - 1] === 0 ||
+          bitmap[i + 1] === 0 ||
+          bitmap[i - WIDTH] === 0 ||
+          bitmap[i + WIDTH] === 0 ||
+          bitmap[i - 1 - WIDTH] === 0 ||
+          bitmap[i + 1 - WIDTH] === 0 ||
+          bitmap[i - 1 + WIDTH] === 0 ||
+          bitmap[i + 1 + WIDTH] === 0 ||
+          bitmap[i - 1] === undefined ||
+          bitmap[i + 1] === undefined ||
+          bitmap[i - WIDTH] === undefined ||
+          bitmap[i + WIDTH] === undefined ||
+          bitmap[i - 1 - WIDTH] === undefined ||
+          bitmap[i + 1 - WIDTH] === undefined ||
+          bitmap[i - 1 + WIDTH] === undefined ||
+          bitmap[i + 1 + WIDTH] === undefined
+        ) {
+          bitmap[i] += 1;
+        }
+      }
+    }
 
-  var rooms = generateDungeon(rooms);
+    return bitmap;
+  }
+  function interpretBit(bit) {
+    return {
+      type: Math.floor(bit / 100),
+      height: Math.floor((bit % 100) / 10),
+      isWall: bit % 10,
+    };
+  }
 
-  return rooms;
+  function generateDungeonMap() {
+    return generateBitmap(
+      generateDungeon(generateRooms(generateBSP(0, 0, WIDTH, HEIGHT))),
+    );
+  }
+
+  return [generateDungeonMap, interpretBit];
 })();
