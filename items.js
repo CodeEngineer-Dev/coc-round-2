@@ -79,10 +79,9 @@ const p_sword = new ItemPrototype(
           }
         }
       }
-    else {
-      this.data.lastUse = Date.now();
-    }
-  },
+      else {
+        this.data.lastUse = Date.now();
+      }
 );
 
 const p_dagger = new ItemPrototype(
@@ -114,11 +113,7 @@ const p_dagger = new ItemPrototype(
       } else {
         this.data.lastUse = Date.now();
       }
-    } else {
-      this.data.lastUse = Date.now();
-    }
-  },
-});
+);
 
 const p_apple = new ItemPrototype("Apple", {
   stackable: true,
