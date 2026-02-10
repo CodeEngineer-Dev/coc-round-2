@@ -170,10 +170,11 @@ class Cone {
     const deg = 180 / Math.PI;
 
     // forward
-    const q = glMatrix.quat.fromEuler(glMatrix.quat.create(), pitch * deg, yaw * deg, 0);
-    this.f = glMatrix.vec3.fromValues(1, 0, 0);
-    this.f = glMatrix.vec3.transformQuat(this.f, this.f, q);
-
+    this.f = glMatrix.vec3.fromValues(
+      -Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      -Math.cos(yaw) * Math.cos(pitch)
+    );
     this.sweepAngle = sweepAngle;
   }
 
@@ -206,7 +207,7 @@ class Cone {
   collideEntities(entities) {
     return (
       entities.map(entity => ({ entity: entity, data: this.collide(entity.hbox)}))
-              .filter(entry => entry.data.dist != Infinity)
+              //.filter(entry => entry.data.dist != Infinity)
     );
   }
 }

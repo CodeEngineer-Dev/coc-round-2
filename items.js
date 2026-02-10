@@ -68,7 +68,7 @@ const p_sword = new ItemPrototype(
           user.x + user.constructor.width / 2,
           user.y + user.constructor.height - 0.3,
           user.z + user.constructor.width / 2,
-          user.yaw, user.pitch
+          user.yaw, user.pitch, Math.PI / 4
         );
         const intersect = cone.collideEntities([...plat.entities, plat.player].filter(e => e != user));
         for (const entry of intersect) {
