@@ -170,7 +170,7 @@ class Cone {
     const deg = 180 / Math.PI;
 
     // forward
-    glMatrix.quat.fromEuler(q, pitch * deg, yaw * deg, 0);
+    const q = glMatrix.quat.fromEuler(glMatrix.quat.create(), pitch * deg, yaw * deg, 0);
     this.f = glMatrix.vec3.fromValues(1, 0, 0);
     this.f = glMatrix.vec3.transformQuat(this.f, this.f, q);
 
