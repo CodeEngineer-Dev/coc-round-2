@@ -54,7 +54,6 @@ https://www.khanacademy.org/cs/i/5482258067734528
     renderer.assetManager.loadFromBase64('blocks', blocksBase64);
     renderer.assetManager.loadFromBase64('items', itemsBase64);
     renderer.assetManager.loadFromBase64('lights', lightBase64);
-    console.log(renderer.assetManager)
     
     // Initialize platformer
     plat = new Platformer(0, 1, 0);
@@ -70,7 +69,6 @@ https://www.khanacademy.org/cs/i/5482258067734528
     plat.player.inventory.slots[0][3].content = new ItemInstance(p_dagger);
     plat.player.inventory.slots[0][3].amount = 1;
 
-    console.log(generateDungeonMap())
     let dungeonBitmap = generateDungeonMap();
     // Add blocks
     /*
@@ -160,25 +158,33 @@ https://www.khanacademy.org/cs/i/5482258067734528
           }
         } else {
           if (Math.random() < 0.05) {
-            
             const npc = new NPC(x_pos - 0.35, 1, z_pos - 0.35, new RenderComponent("items/rat-attack", {translation: [x_pos, 2, z_pos]}));
             npc.setAI(function(plat) {
-              return { Space: false, dx: 0, dy: 0 };
+              if (plat.player.health > 0) {
+                const sqmag = (
+                  (plat.player.x - this.x) * (plat.player.x - this.x),
+                  (plat.player.y - this.y) * (plat.player.y - this.y),
+                  (plat.player.z - this.z) * (plat.player.z - this.z)
+                );
+                if (sqmag < 64) {
+                  const ang = Math.atan2(this.x - plat.player.x, this.z - plat.player.z);
+                  const diff = (ang - this.yaw + 10 * Math.PI) % (2 * Math.PI);
+                  this.yaw = ang * 180 / Math.PI;
+                  if (sqmag < 2 && (Date.now() - this.lastPunch) >= 500) {
+                    return { MouseLeft: true, KeyW: true, dx: 0, dy: 0 };
+                  } else {
+                    return { KeyW: true, dx: 0, dy: 0 };
+                  }
+                }
+              }
+              return { dx: 0, dy: 0 };
             });
             plat.entities.push(npc);
-            plat.entities[plat.entities.length - 1].addToScene(renderer.scene);
+            npc.addToScene(renderer.scene);
           }
         }
       }
     }
-
-    const npc1 = new NPC(0, 2, 0, new RenderComponent("items/rat"));
-    npc1.setAI(function(plat) {
-      return { Space: false, dx: 0, dy: 0 };
-    });
-    console.log(npc1);
-    plat.entities.push(npc1);
-    plat.entities[0].addToScene(renderer.scene);
 
     const playerSpotLight = new RenderComponent('lights/White', {translation: [plat.player.x + 0.5, plat.player.y - 1, plat.player.z + 0.5]}, {lightColor: [1.0, 1.0, 1.0], lightType: "spot", lightRange: 100, direction: [1, 0, 0], cutOff: Math.cos(Math.PI / 12), outerCutOff: Math.cos(Math.PI / 6)});
     renderer.scene.addComponent(playerSpotLight);
@@ -200,8 +206,6 @@ https://www.khanacademy.org/cs/i/5482258067734528
       playerPointLight.transform.setTranslation(plat.player.x + 0.35, plat.player.y + 1.5, plat.player.z + 0.35);
       
       // Orient camera
-      
-      
       const current = plat.player.inventory.slots[0][plat.player.inventory.selected].content;
       if (current?.model) {
         if (renderer.scene.componentList.filter(node => node.renderComponent == held).length == 0) {
@@ -258,9 +262,10 @@ https://www.khanacademy.org/cs/i/5482258067734528
           plat.player.yv = 0;
           plat.player.zv = 0;
           plat.player.health = plat.player.maxHealth;
+          plat.player.resetHitbox();
         }
       }
-
+      console.log(plat.player.y);
       // Draw pointer (if in use)
       drawPointer();
 

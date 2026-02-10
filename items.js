@@ -74,7 +74,6 @@ const p_sword = new ItemPrototype(
         for (const entry of intersect) {
           if ((entry.entity instanceof NPC || entry.entity instanceof Player) && entry.data?.dist < 4) {
             entry.entity.indirectDamage({strength: 10, from: user});
-            console.log(entry.entity.health)
           }
         }
       } else {
@@ -109,7 +108,6 @@ const p_dagger = new ItemPrototype(
         const intersect = ray.collideEntities([...plat.blocks, ...plat.entities, plat.player].filter(e => e != user));
         if ((intersect.entity instanceof NPC || intersect.entity instanceof Player) && intersect.data?.t < 4) {
           intersect.entity.indirectDamage({strength: 25, from: user});
-          console.log(intersect.entity.health)
         }
       } else {
         this.data.lastUse = Date.now();
