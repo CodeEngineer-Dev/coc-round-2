@@ -27,11 +27,11 @@ const { Block, Entity, NPC, Platformer } = (function () {
     }
 
     /** Creates an instance of Block from a scene graph node.
-     * 
-     * @param {Number} w 
-     * @param {Number} h 
-     * @param {Number} l 
-     * @param {Object} node 
+     *
+     * @param {Number} w
+     * @param {Number} h
+     * @param {Number} l
+     * @param {Object} node
      * @returns {Block}
      */
     static fromNode(w, h, l, node) {
@@ -44,7 +44,7 @@ const { Block, Entity, NPC, Platformer } = (function () {
         vec[2] - 0.5 * l,
         w,
         h,
-        l
+        l,
       );
     }
   }
@@ -129,7 +129,7 @@ const { Block, Entity, NPC, Platformer } = (function () {
     }
 
     /** Steps entity. The events is the entity's own internal controls.
-     * 
+     *
      * @param {Platformer} plat
      * @param {Object} events
      */
@@ -186,7 +186,12 @@ const { Block, Entity, NPC, Platformer } = (function () {
           this.damage(Math.pow(-this.yv / JUMP, 3) * 2);
         }
         // Only allow jumps if falling
-        if (this.health > 0 && events.Space && this.yv < 0 && !this.inventory.opened) {
+        if (
+          this.health > 0 &&
+          events.Space &&
+          this.yv < 0 &&
+          !this.inventory.opened
+        ) {
           this.yv = JUMP;
         } else {
           this.yv = 0;
@@ -219,7 +224,7 @@ const { Block, Entity, NPC, Platformer } = (function () {
         if (slot.content?.use) {
           const consumed = slot.content.use(this);
           if (consumed) {
-            slot.amount --;
+            slot.amount--;
             if (slot.amount == 0) {
               slot.content = null;
             }
@@ -235,8 +240,8 @@ const { Block, Entity, NPC, Platformer } = (function () {
    * @typedef {NPC}
    */
   class NPC extends Entity {
-    static width = 1;
-    static height = 0.75;
+    static width = 0.7;
+    static height = 0.7;
 
     /** Creates an instance of NPC.
      *
@@ -248,8 +253,8 @@ const { Block, Entity, NPC, Platformer } = (function () {
     constructor(x, y, z, renderComponent) {
       super(x, y, z);
       this.renderComponent = renderComponent;
-      this.ai = function(plat) {
-        return {dx: 0, dy: 0};
+      this.ai = function (plat) {
+        return { dx: 0, dy: 0 };
       };
     }
 
@@ -268,14 +273,14 @@ const { Block, Entity, NPC, Platformer } = (function () {
       this.renderComponent.transform.setTranslation(
         this.x + this.constructor.width / 2,
         this.y + this.constructor.height / 2,
-        this.z + this.constructor.width / 2
+        this.z + this.constructor.width / 2,
       );
       this.renderComponent.transform.setRotation(0, 0, this.yaw);
     }
 
     /** Sets ai. Takes function (plat) { return events; }.
-     * 
-     * @param {Function} ai 
+     *
+     * @param {Function} ai
      */
     setAI(ai) {
       this.ai = ai;
