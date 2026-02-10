@@ -162,10 +162,11 @@ https://www.khanacademy.org/cs/i/5482258067734528
       }
     }
 
-    const npc1 = new NPC(-3, 2, 0, new RenderComponent("items/rat"));
+    const npc1 = new NPC(0, 2, 0, new RenderComponent("items/rat"));
     npc1.setAI(function(plat) {
       return { Space: true, dx: 0, dy: 0 };
     });
+    console.log(npc1);
     plat.entities.push(npc1);
     plat.entities[0].addToScene(renderer.scene);
 
