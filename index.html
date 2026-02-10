@@ -1,0 +1,4428 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>rats - a 3d dungeon crawler</title>
+    <style>
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+      }
+      canvas {
+        outline: 1px solid black;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas" width="0" height="0"></canvas>
+    <!-- 3D scene, width and height are 0 to allow for any aspect ratio,
+  they are fixed in code later -->
+    <canvas id="overlay" width="0" height="0"></canvas>
+    <!-- 2D rendering overlay -->
+
+    <script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.4.4/gl-matrix-min.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/upng-js/2.1.0/UPNG.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/CodeEngineer-Dev/base64glbfiles@main/round-2.js"></script>
+
+    <!--  -->
+    <script type>
+      // Utils
+
+      // make plat global
+      var plat;
+
+      /**
+       * Utility function for clamping number values. Comes from https://www.omarileon.me/blog/javascript-clamp.
+       *
+       * @param {number} num
+       * @param {number} lower
+       * @param {number} upper
+       * @returns {number}
+       */
+      function clamp(num, lower, upper) {
+        return Math.min(Math.max(num, lower), upper);
+      }
+
+      // Delta
+      var delta = 0;
+      var past = Date.now();
+
+      /** Utility function for updating delta clock.
+       *
+       */
+      function updateDelta() {
+        // Calculates the difference between the last frame and this frame, then resets the last frame time
+        var now = Date.now();
+        delta = Math.min((now - past) / 1000, 0.1);
+        past = now;
+      }
+
+      // Canvas and overlay
+      var canvas = document.querySelector("#canvas");
+      var overlay = document.querySelector("#overlay");
+      canvas.width = canvas.getBoundingClientRect().width;
+      canvas.height = canvas.getBoundingClientRect().height;
+      overlay.width = overlay.getBoundingClientRect().width;
+      overlay.height = overlay.getBoundingClientRect().height;
+      var ctx2D = overlay.getContext("2d");
+
+      // Events (events + mouse)
+      var events = { dx: 0, dy: 0 };
+      var eventsPrev = { dx: 0, dy: 0 };
+      var mouseX = 0;
+      var mouseY = 0;
+      var pointerInUse = false;
+
+      // When key down, mark it as true
+      document.addEventListener("keydown", (e) => {
+        events[e.code] = true;
+        // Shift shortcut
+        events.Shift = events.ShiftLeft || events.ShiftRight;
+      });
+
+      // Similar to above
+      document.addEventListener("keyup", (e) => {
+        events[e.code] = false;
+        events.Shift = events.ShiftLeft || events.ShiftRight;
+      });
+
+      // Lock pointer upon click
+      overlay.addEventListener("mousedown", () => {
+        overlay.requestPointerLock();
+      });
+
+      /** Mouse movement event listener
+       *
+       * @param {Event} event
+       */
+      function onMouseMove(event) {
+        events.dx = event.movementX;
+        events.dy = event.movementY;
+        if (pointerInUse) {
+          mouseX += events.dx;
+          mouseY += events.dy;
+          mouseX = clamp(mouseX, 0, overlay.width);
+          mouseY = clamp(mouseY, 0, overlay.height);
+        }
+      }
+
+      // More listeners
+      /** Mouse down event listener
+       *
+       * @param {Event} e
+       */
+      function onMouseDown(e) {
+        switch (e.which) {
+          case 1:
+            events.MouseLeft = true;
+            break;
+          case 3:
+            events.MouseRight = true;
+            break;
+        }
+      }
+
+      /** Mouse up event listener
+       *
+       * @param {Event} e
+       */
+      function onMouseUp(e) {
+        switch (e.which) {
+          case 1:
+            events.MouseLeft = false;
+            break;
+          case 3:
+            events.MouseRight = false;
+            break;
+        }
+      }
+
+      // Turn pointer on and off
+      /** Turn pointer on (eg for opening inventory), when in the pointer lock state
+       *
+       */
+      function turnPointerOn() {
+        pointerInUse = true;
+        mouseX = overlay.width / 2;
+        mouseY = overlay.height / 2;
+      }
+
+      /** Turn pointer off (eg for closing inventory), when in the pointer lock state
+       *
+       */
+      function turnPointerOff() {
+        pointerInUse = false;
+      }
+
+      /** Toggle pointer (eg for opening inventory), when in the pointer lock state
+       *
+       */
+      function togglePointer() {
+        (pointerInUse ? turnPointerOff : turnPointerOn)();
+      }
+
+      // Draw pointer if in use
+      /** Draws the pointer.
+       *
+       */
+      function drawPointer() {
+        if (pointerInUse) {
+          ctx2D.lineWidth = 1;
+          ctx2D.strokeStyle = "#000000";
+          ctx2D.fillStyle = "#ffffff";
+          ctx2D.translate(mouseX, mouseY);
+          ctx2D.beginPath();
+          ctx2D.moveTo(0, 0);
+          ctx2D.lineTo(10, 13);
+          ctx2D.lineTo(6, 13);
+          ctx2D.lineTo(7, 18);
+          ctx2D.lineTo(4, 19);
+          ctx2D.lineTo(3, 14);
+          ctx2D.lineTo(0, 17);
+          ctx2D.closePath();
+          ctx2D.fill();
+          ctx2D.stroke();
+          ctx2D.resetTransform();
+        }
+      }
+
+      // When pointer is locked
+      document.addEventListener("pointerlockchange", () => {
+        if (document.pointerLockElement == overlay) {
+          // Mouse stuff
+          document.addEventListener("mousemove", onMouseMove);
+          document.addEventListener("mousedown", onMouseDown);
+          document.addEventListener("mouseup", onMouseUp);
+        } else {
+          // Stop tracking mouse stuff
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mousedown", onMouseDown);
+          document.removeEventListener("mouseup", onMouseUp);
+          events.Mouse = false;
+        }
+      });
+    </script>
+    <script type>
+      /*
+
+This library supports loading in base64 string representations of .glb files. GLB is a binary format for representing and transmitting 3D models.
+
+Uses right handed coordinates.
+
+Supports:
+- Solid colored geometry
+- Textured geometry
+- Emissive materials
+- Phong lighting
+- Directional lighting
+- Multiple point lights
+- Multiple spotlights
+
+Currently does not support:
+- Emissive textures
+- Transparency
+- Skeletal animation
+- Full PBR lighting
+and a million other things. Ideally, keep your models relatively simple.
+
+Dependencies:
+- glMatrix. Fast and small matrix library, this is built on it. https://cdn.jsdelivr.net/npm/gl-matrix@3.4.4/gl-matrix-min.min.js
+- UPNG. Used to convert arrays of bytes representing a PNG into a color byte array. https://cdnjs.cloudflare.com/ajax/libs/upng-js/2.1.0/UPNG.min.js
+- pako. A dependency of UPNG, used for inflating/compressing PNG data. https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js
+
+
+
+
+TODO: Add in tangents so that normals work properly.
+
+*/
+      var { Renderer, RenderComponent } = (function () {
+        var MAX_POINT_LIGHTS = 100;
+        var MAX_SPOT_LIGHTS = 1;
+
+        /**
+         * Asset manager for the renderer. Loads models and stores meshes, materials, and textures.
+         *
+         * @class AssetManager
+         * @typedef {AssetManager}
+         */
+        class AssetManager {
+          /**
+           * Creates an instance of AssetManager.
+           *
+           * @constructor
+           * @param {WebGL2RenderingContext} gl Must be a WebGL2RenderingContext.
+           */
+          constructor(gl) {
+            this.gl = gl;
+            this.meshes = {};
+            this.materials = {};
+            this.textures = {};
+            this.scenes = {};
+            this.nodes = {};
+          }
+          /**
+           * Takes an array buffer representing a GLB file and splits it into its JSON and binary sections.
+           *
+           * @private
+           * @param {ArrayBuffer} data
+           * @returns {{ json: object; bin: Uint8Array; }}
+           */
+          parseGLB(data) {
+            // Get a view of the array buffer so that values can be accessed.
+            var buffer = new DataView(data);
+            // Pull out the header chunk of the file.
+            var header_chunk = {
+              magic: buffer.getUint32(0, true),
+              version: buffer.getUint32(4, true),
+              length: buffer.getUint32(8, true),
+            };
+            // Verify that the file is valid .glb.
+            if (header_chunk.magic != 0x46546c67)
+              throw new Error("Not a valid .glb file.");
+            // Pull out the JSON chunk.
+            var json_chunk = {
+              length: buffer.getUint32(12, true),
+              type: buffer.getUint32(16, true),
+              data: new Uint8Array(data, 20, buffer.getUint32(12, true)),
+            };
+            // Check JSON chunk validity.
+            if (json_chunk.type != 0x4e4f534a)
+              throw new Error("Not a valid type for a JSON chunk.");
+            // Decode the JSON chunk bytes into a string.
+            var decoder = new TextDecoder("utf-8");
+            var decodedString = decoder.decode(json_chunk.data);
+            var json = JSON.parse(decodedString);
+            // Get the binary chunk that comes right after the JSON.
+            var binary_chunk = {
+              length: buffer.getUint32(20 + buffer.getUint32(12, true), true),
+              type: buffer.getUint32(20 + buffer.getUint32(12, true) + 4, true),
+              data: new Uint8Array(
+                data,
+                20 + buffer.getUint32(12, true) + 8,
+                buffer.getUint32(20 + buffer.getUint32(12, true), true),
+              ),
+            };
+            // Check binary chunk validity
+            if (binary_chunk.type != 0x004e4942)
+              throw new Error("Not a valid type for a binary chunk.");
+            // Return the parsed json and the binary as an array of byters.
+            return {
+              json,
+              bin: binary_chunk.data,
+            };
+          }
+          /**
+           * Loads a model into the asset manager from a base64 string representing a .glb file.
+           *
+           * @param {string} name Name of the .glb file
+           * @param {string} base64 String representation of the .glb file
+           */
+          loadFromBase64(name, base64) {
+            // Convert the string to binary.
+            var binStr = window.atob(base64);
+            // Get the number of bytes and allocate that amount of memory.
+            var l = binStr.length;
+            var bytes = new Uint8Array(l);
+            // Walk through the string and convert each character into its corresponding byte.
+            for (var i = 0; i < l; i++) {
+              bytes[i] = binStr.charCodeAt(i);
+            }
+            // Get the underlying array buffer.
+            var data = bytes.buffer;
+            // Pass that to parseGLB() for parsing.
+            var parsedData = this.parseGLB(data);
+            // Load the data into the asset manager.
+            this.loadModel(name, parsedData.json, parsedData.bin);
+          }
+          /**
+           * Loads a model into the asset manager from a URL that links a .glb file. If loading multiple models, use Promise.all().then().
+           *
+           * @async
+           * @param {string} name
+           * @param {string} url
+           * @returns {Promise}
+           */
+          async loadFromURL(name, url) {
+            // Get the file from the url.
+            var response = await fetch(url);
+            // Throw error if something is wrong.
+            if (!response.ok)
+              throw new Error(`Response status: ${response.status}`);
+            // Get the array buffer from the response.
+            var data = await response.arrayBuffer();
+            // Parse data
+            var { json, bin } = this.parseGLB(data);
+            // Load data into asset manager
+            this.loadModel(name, json, bin);
+          }
+          /**
+           * Takes JSON and binary chunks and uploads meshes, materials, and textures to GPU.
+           *
+           * @private
+           * @param {string} name Name of the file. Will be used as folder name for meshes.
+           * @param {object} json JSON part of .glb file.
+           * @param {Uint8Array} binary Binary part of .glb file.
+           */
+          loadModel(name, json, binary) {
+            // Get the array of materials and add them to materials under a "folder".
+            var materials = json.materials.map((material) => {
+              return structuredClone(material);
+            });
+            this.materials[name] = materials;
+
+            // Textures require images, samplers, and textures to exist in the JSON.
+            if ("images" in json && "samplers" in json && "textures" in json) {
+              // Load images
+              var images = json.images.map((image) => {
+                // Get the image's binary.
+                var bufferView = json.bufferViews[image.bufferView];
+                var imageData = binary.slice(
+                  bufferView.byteOffset,
+                  bufferView.byteOffset + bufferView.byteLength,
+                );
+                // Must be PNG images
+                var mimeType = image.mimeType;
+                if (mimeType != "image/png")
+                  throw new Error("Image in .glb is not a PNG format!");
+                // Decode the PNG bytes into RGBA array.
+                var imageDataDecoded = UPNG.decode(imageData.buffer);
+                var imageRGBAArrayBuffer = UPNG.toRGBA8(imageDataDecoded)[0];
+                var imageRGBA = new Uint8Array(imageRGBAArrayBuffer);
+                // Return the image as that RGBA array along with width and height.
+                return {
+                  imageRGBA,
+                  width: imageDataDecoded.width,
+                  height: imageDataDecoded.height,
+                };
+              });
+              // Clone samplers.
+              var samplers = json.samplers.map((sampler) =>
+                structuredClone(sampler),
+              );
+              // Map each texture to a texture location on GPU and store in textures.
+              var textures = json.textures.map((texture) => {
+                // Sampler is currently unused because I'm not using the gltf specs.
+                var sampler = samplers[texture.sampler];
+                // Get corresponding image.
+                var imageData = images[texture.source];
+                // Bind texture to GPU.
+                var textureGPU = this.gl.createTexture();
+                this.gl.bindTexture(this.gl.TEXTURE_2D, textureGPU);
+
+                this.gl.texParameteri(
+                  this.gl.TEXTURE_2D,
+                  this.gl.TEXTURE_MIN_FILTER,
+                  sampler.minFilter,
+                );
+                this.gl.texParameteri(
+                  this.gl.TEXTURE_2D,
+                  this.gl.TEXTURE_MAG_FILTER,
+                  sampler.magFilter,
+                );
+                this.gl.texParameteri(
+                  this.gl.TEXTURE_2D,
+                  this.gl.TEXTURE_WRAP_S,
+                  this.gl.CLAMP_TO_EDGE,
+                );
+                this.gl.texParameteri(
+                  this.gl.TEXTURE_2D,
+                  this.gl.TEXTURE_WRAP_T,
+                  this.gl.CLAMP_TO_EDGE,
+                );
+                // Upload texture
+                this.gl.texImage2D(
+                  this.gl.TEXTURE_2D,
+                  0,
+                  this.gl.RGBA,
+                  imageData.width,
+                  imageData.height,
+                  0,
+                  this.gl.RGBA,
+                  this.gl.UNSIGNED_BYTE,
+                  imageData.imageRGBA,
+                );
+                this.gl.generateMipmap(this.gl.TEXTURE_2D);
+                return textureGPU;
+              });
+              this.textures[name] = textures;
+            }
+            // This object maps component type to the number of components in that type.
+            var componentCounts = {
+              SCALAR: 1,
+              VEC2: 2,
+              VEC3: 3,
+              VEC4: 4,
+              MAT2: 4,
+              MAT3: 9,
+              MAT4: 16,
+            };
+            // This object maps attribute types to their location as given in the shader program.
+            var attributeLocations = {
+              POSITION: 0,
+              NORMAL: 1,
+              TEXCOORD_0: 2,
+              TANGENT: 3,
+            };
+            // Map each JSON buffer to a buffer location on the GPU. Note that there is generally only one buffer for .glb files.
+            var glBuffers = json.buffers.map((bufferInfo) => {
+              // Even though the vertex array buffer and element array buffer use the same data, WebGL requires that they be separate buffers.
+              var vbo = this.gl.createBuffer();
+              var ebo = this.gl.createBuffer();
+              // Get the data for this bufer
+              var bufferData = binary.slice(0, bufferInfo.byteLength);
+              // Upload the same data to each buffer. It is double the space, less efficient. But should be no big deal for modern GPUs.
+              this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vbo);
+              this.gl.bufferData(
+                this.gl.ARRAY_BUFFER,
+                bufferData,
+                this.gl.STATIC_DRAW,
+              );
+              this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, ebo);
+              this.gl.bufferData(
+                this.gl.ELEMENT_ARRAY_BUFFER,
+                bufferData,
+                this.gl.STATIC_DRAW,
+              );
+              return {
+                vbo,
+                ebo,
+              };
+            });
+            // Map each mesh to an object containing it's name and it's primitives.
+            var meshes = json.meshes.map((mesh) => {
+              return {
+                name: mesh.name,
+                primitives: mesh.primitives.map((primitive) => {
+                  // Primitives each have a vao.
+                  var vao = this.gl.createVertexArray();
+                  this.gl.bindVertexArray(vao);
+                  // Getting minimum and maximum local coordinates for later use in frustum culling.
+                  var vMin = [0, 0, 0];
+                  var vMax = [0, 0, 0];
+                  // Right now there are only four attributes being used: POSITION, NORMAL, and TEXCOORD_0.
+                  Object.entries(primitive.attributes).forEach((param) => {
+                    // Get the accessor for the attribute.
+                    var [attributeName, accessorId] = param;
+                    var accessor = json.accessors[accessorId];
+                    // Set maximum and minimum vertex coordinates.
+                    if (attributeName == "POSITION") {
+                      vMin = structuredClone(accessor.min);
+                      vMax = structuredClone(accessor.max);
+                    }
+                    // Get the associated buffer view and vertex buffer object.
+                    var bufferView = json.bufferViews[accessor.bufferView];
+                    var vbo = glBuffers[bufferView.buffer].vbo;
+                    // Get the location of the attribute.
+                    var location = attributeLocations[attributeName];
+                    // Bind the attribute to the correct location in the vertex buffer object.
+                    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vbo);
+                    this.gl.enableVertexAttribArray(location);
+                    this.gl.vertexAttribPointer(
+                      location,
+                      componentCounts[accessor.type],
+                      accessor.componentType,
+                      false,
+                      bufferView.byteStride || 0,
+                      (bufferView.byteOffset || 0) + (accessor.byteOffset || 0),
+                    );
+                  });
+                  // Bind the indice data to the EBO.
+                  var indexAccessor = json.accessors[primitive.indices];
+                  var indexBufferView =
+                    json.bufferViews[indexAccessor.bufferView];
+                  var ebo = glBuffers[indexBufferView.buffer].ebo;
+                  this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, ebo);
+                  // Set to null as we are done with the current primitive.
+                  this.gl.bindVertexArray(null);
+                  // Return an object with the necessary drawing data.
+
+                  return {
+                    vao: vao,
+                    mode: primitive.mode || this.gl.TRIANGLES,
+                    count: indexAccessor.count,
+                    type: indexAccessor.componentType,
+                    offset:
+                      (indexBufferView.byteOffset || 0) +
+                      (indexAccessor.byteOffset || 0),
+                    material: {
+                      folder: name,
+                      index: primitive.material,
+                    },
+                    vMin: glMatrix.vec3.fromValues(vMin[0], vMin[1], vMin[2]),
+                    vMax: glMatrix.vec3.fromValues(vMax[0], vMax[1], vMax[2]),
+                  };
+                }),
+              };
+            });
+            /// END AI CODE
+            // Put the meshes into the meshes object under the correct "folder".
+            for (var mesh of meshes) {
+              this.meshes[`${name}/${mesh.name}`] = mesh;
+            }
+
+            // Now let's get the scene and it's nodes
+
+            var scenes = json.scenes.map((scene) => structuredClone(scene));
+            var nodes = structuredClone(json.nodes).map((node) => {
+              if ("mesh" in node) {
+                return {
+                  ...node,
+                  mesh: name + "/" + meshes[node.mesh].name,
+                };
+              } else {
+                return {
+                  ...node,
+                };
+              }
+            });
+
+            for (var scene of scenes) {
+              this.scenes[`${name}/${scene.name}`] = scene;
+            }
+            this.nodes[name] = nodes;
+          }
+          /**
+           * Return a mesh given a mesh path.
+           *
+           * @param {string} meshPath Must be in the form "folder/meshName". Mesh names are determined by what name the model creator gave it. Use a modelling software to view names.
+           * @returns {Mesh}
+           */
+          getMesh(meshPath) {
+            return this.meshes[meshPath];
+          }
+          /**
+           * Returns a material given a folder name and an index.
+           *
+           * @param {string} folder
+           * @param {number} index
+           * @returns {Material}
+           */
+          getMaterial(folder, index) {
+            return this.materials[folder][index];
+          }
+          /**
+           * Returns a texture location given a folder name and an index.
+           *
+           * @param {string} folder
+           * @param {number} index
+           * @returns {WebGLTexture}
+           */
+          getTexture(folder, index) {
+            return this.textures[folder][index];
+          }
+        }
+        /**
+         * Transform component. Stores data about transformations.
+         *
+         * @class Transform
+         * @typedef {Transform}
+         */
+        class Transform {
+          /**
+           * Creates an instance of Transform with default values of no transformations.
+           *
+           * @constructor
+           */
+          constructor(transforms = {}) {
+            this.translation =
+              "translation" in transforms
+                ? glMatrix.vec3.clone(transforms.translation)
+                : glMatrix.vec3.create();
+            this.rotation =
+              "rotation" in transforms
+                ? glMatrix.quat.clone(transforms.rotation)
+                : glMatrix.quat.create();
+            this.scale =
+              "scale" in transforms
+                ? glMatrix.vec3.clone(transforms.scale)
+                : glMatrix.vec3.fromValues(1, 1, 1);
+            this.matrix = glMatrix.mat4.create();
+            this.normalMatrix = glMatrix.mat3.create();
+            // Used to determine if the matrix needs recalculation after transforms change.
+            this.isDirty = true;
+            this.utilMatrix = glMatrix.mat4.create();
+            this.globalForward = glMatrix.vec3.fromValues(0, 0, -1);
+            this.globalUp = glMatrix.vec3.fromValues(0, 1, 0);
+            this.globalRight = glMatrix.vec3.fromValues(1, 0, 0);
+            this.forward = glMatrix.vec3.fromValues(0, 0, -1);
+            this.up = glMatrix.vec3.fromValues(0, 1, 0);
+            this.right = glMatrix.vec3.fromValues(1, 0, 0);
+          }
+          /**
+           * Set the translation.
+           *
+           * @param {number} x
+           * @param {number} y
+           * @param {number} z
+           */
+          setTranslation(x, y, z) {
+            glMatrix.vec3.set(this.translation, x, y, z);
+            this.isDirty = true;
+          }
+          /**
+           * Set the rotation in degrees.
+           *
+           * @param {number} pitch Rotation around the x-axis.
+           * @param {number} yaw Rotation around the y-axis.
+           * @param {number} roll Rotation around the z-axis.
+           * @param {?boolean} [c] Optional boolean to enable pitch clamping, preventing gimbal lock. Set to true for uses like player view rotation.
+           */
+          setRotation(pitch, yaw, roll, c) {
+            if (c === true) {
+              pitch = clamp(pitch, -89.9, 89.9);
+            }
+            glMatrix.quat.fromEuler(this.rotation, pitch, yaw, roll);
+            this.isDirty = true;
+          }
+          setRotationQuaternion(quaternion) {
+            glMatrix.quat.copy(this.rotation, quaternion);
+            this.isDirty = true;
+          }
+
+          getAngle(axis) {
+            var axisVec;
+            if (axis == "x") {
+              axisVec = [1, 0, 0];
+            } else if (axis == "y") {
+              axisVec = [0, 1, 0];
+            } else {
+              axisVec = [0, 0, -1];
+            }
+            return glMatrix.quat.getAxisAngle(axisVec, this.rotation);
+          }
+
+          /**
+           * Set the scale.
+           *
+           * @param {number} x
+           * @param {number} y
+           * @param {number} z
+           */
+          setScale(x, y, z) {
+            glMatrix.vec3.set(this.scale, x, y, z);
+            this.isDirty = true;
+          }
+          /**
+           * Set transforms to look towards a position.
+           *
+           * @param {[number, number, number]} position Point to look at
+           * @param {?[number, number, number]} [up=[0, 1, 0]] Up vector, defaults to [0, 1, 0]
+           */
+          setLookTowards(position, up = [0, 1, 0]) {
+            glMatrix.mat4.targetTo(this.matrix, this.translation, position, up);
+            glMatrix.mat4.getRotation(this.rotation, this.matrix);
+            glMatrix.mat4.getScaling(this.scale, this.matrix);
+          }
+          /**
+           * Returns transformation matrix
+           *
+           * @returns {glMatrix.mat4}
+           */
+          getTransformationMatrix() {
+            // If the transforms have been changed, we need to recalculate the transformation matrix.
+            if (this.isDirty) {
+              glMatrix.mat4.fromRotationTranslationScale(
+                this.matrix,
+                this.rotation,
+                this.translation,
+                this.scale,
+              );
+              this.isDirty = false;
+            }
+            return this.matrix;
+          }
+          /**
+           * Returns normal matrix
+           *
+           * @returns {glMatrix.mat3}
+           */
+          getNormalMatrix() {
+            // Calculate transformation matrix.
+            glMatrix.mat4.fromRotationTranslationScale(
+              this.matrix,
+              this.rotation,
+              this.translation,
+              this.scale,
+            );
+            // Invert the matrix, transpose it, and take the upper 3x3 to get the normal matrix.
+            glMatrix.mat4.invert(this.utilMatrix, this.matrix);
+            glMatrix.mat4.transpose(this.utilMatrix, this.utilMatrix);
+            glMatrix.mat3.fromMat4(this.normalMatrix, this.utilMatrix);
+            return this.normalMatrix;
+          }
+          /**
+           * Get the forward vector of the transformation
+           *
+           * @returns {glMatrix.vec3}
+           */
+          getForward() {
+            glMatrix.vec3.transformQuat(
+              this.forward,
+              this.globalForward,
+              this.rotation,
+            );
+            return this.forward;
+          }
+          /**
+           * Get the up vector of the transformation
+           *
+           * @returns {glMatrix.vec3}
+           */
+          getUp() {
+            glMatrix.vec3.transformQuat(this.up, this.globalUp, this.rotation);
+            return this.up;
+          }
+          /**
+           * Get the right vector of the transformation
+           *
+           * @returns {glMatrix.vec3}
+           */
+          getRight() {
+            glMatrix.vec3.transformQuat(
+              this.right,
+              this.globalRight,
+              this.rotation,
+            );
+            return this.right;
+          }
+        }
+        /**
+         * Render component. Store data renderer needs to know to render an object.
+         *
+         * @class RenderComponent
+         * @typedef {RenderComponent}
+         */
+        class RenderComponent {
+          /**
+           * Creates an instance of RenderComponent.
+           *
+           * @constructor
+           * @param {string} meshPath Mesh path in the form "fileName/meshName"
+           * @param {?LightComponent} [light] If defined, contains properties needed for emissive meshes. Mesh must contain primitive with emissive factor.
+           * @param {?string} [light.lightType] Either "point" or "spot"
+           * @param {?lightRange} [light.lightRange] Determines range of light
+           * @param {?direction} [light.direction] Used for spot lights, determines direction of spot light.
+           * @param {?cutOff} [light.cutOff] Used for spot lights, cosine of angle in radians swept by spotlight
+           * @param {?outerCutOff} [light.outerCutOff] Used for spot lights, cosine of angle in radians at which spotlight ends completely
+           *
+           */
+          constructor(meshPath, transforms, light) {
+            this.mesh = meshPath;
+            this.transform = new Transform(transforms);
+            this.light = light || null;
+          }
+        }
+        /**
+         * Camera class, stores data about camera and view.
+         *
+         * @class Camera
+         * @typedef {Camera}
+         */
+        class Camera {
+          /**
+           * Creates an instance of Camera.
+           *
+           * @constructor
+           */
+          constructor() {
+            this.transform = new Transform();
+            this.viewMatrix = glMatrix.mat4.create();
+            this.near = 0.1;
+            this.far = 100;
+            this.fovy = glMatrix.glMatrix.toRadian(100.0);
+            // Properly initialize view matrix
+            glMatrix.mat4.invert(
+              this.viewMatrix,
+              this.transform.getTransformationMatrix(),
+            );
+          }
+          /**
+           * Return view matrix.
+           *
+           * @returns {glMatrix.mat4}
+           */
+          getViewMatrix() {
+            if (this.transform.isDirty) {
+              glMatrix.mat4.invert(
+                this.viewMatrix,
+                this.transform.getTransformationMatrix(),
+              );
+            }
+            return this.viewMatrix;
+          }
+        }
+        /**
+         * Scene class, stores scene list and handles adding and removing render components.
+         *
+         * @class Scene
+         * @typedef {Scene}
+         */
+        class Scene {
+          /**
+           * Creates an instance of Scene.
+           *
+           * @constructor
+           */
+          constructor(assetManager) {
+            this.componentList = [];
+            this.camera = new Camera();
+            this.assetManager = assetManager;
+          }
+          /**
+           * Add render component to scene list
+           *
+           * @param {RenderComponent} component
+           */
+          addComponent(component) {
+            if (component instanceof RenderComponent) {
+              this.componentList.push({
+                name: "who cares lol",
+                renderComponent: component,
+                parent: null,
+                worldMatrix: glMatrix.mat4.create(),
+              });
+            } else {
+              this.componentList.push(component);
+            }
+          }
+          /**
+           * Remove render component from scene list
+           *
+           * @param {RenderComponent} component
+           */
+          removeComponent(component) {
+            // This is swap and pop for removing elements from arrays.
+            var entityIndex = this.componentList.indexOf(component);
+            if (entityIndex != -1) {
+              this.componentList[entityIndex] =
+                this.componentList[this.componentList.length - 1];
+              this.componentList.pop();
+            }
+          }
+          crawlNode(nodeList, node, parent = null) {
+            if ("camera" in node) {
+              this.camera.transform.setTranslation(
+                ...(node.translation ? node.translation : [0, 0, 0]),
+              );
+              this.camera.transform.setRotationQuaternion(
+                ...(node.rotation ? node.rotation : glMatrix.quat.create()),
+              );
+              this.camera.transform.setScale(
+                ...(node.scale ? node.scale : [1, 1, 1]),
+              );
+            } else {
+              var renderComponent = new RenderComponent(
+                node.mesh ?? null,
+                node,
+              );
+              renderComponent.transform.isDirty = true;
+
+              var obj = {
+                name: node.name,
+                renderComponent,
+                parent,
+                worldMatrix: glMatrix.mat4.create(),
+                worldDirty: true,
+              };
+
+              if ("children" in node) {
+                obj.children = node.children.map((childNodeIndex) =>
+                  this.crawlNode(nodeList, nodeList[childNodeIndex], obj),
+                );
+              }
+
+              return obj;
+            }
+          }
+
+          loadScene(scenePath) {
+            for (var nodeIndex of this.assetManager.scenes[scenePath].nodes) {
+              var node =
+                this.assetManager.nodes[scenePath.split("/")[0]][nodeIndex];
+              var convertedNode = this.crawlNode(
+                this.assetManager.nodes[scenePath.split("/")[0]],
+                node,
+              );
+              if (convertedNode) this.componentList.push(convertedNode);
+            }
+            return this.componentList;
+          }
+
+          updateNodeWorldTransform(node, parentWorldMatrix) {
+            if (node.renderComponent.transform.isDirty || node.worldDirty) {
+              if (parentWorldMatrix) {
+                glMatrix.mat4.multiply(
+                  node.worldMatrix,
+                  parentWorldMatrix,
+                  node.renderComponent.transform.getTransformationMatrix(),
+                );
+              } else {
+                glMatrix.mat4.copy(
+                  node.worldMatrix,
+                  node.renderComponent.transform.getTransformationMatrix(),
+                );
+              }
+            }
+
+            if ("children" in node) {
+              for (var child of node.children) {
+                child.worldDirty = true;
+                this.updateNodeWorldTransform(child, node.worldMatrix);
+              }
+            }
+
+            node.worldDirty = false;
+          }
+          updateNodesTree() {
+            for (var node of this.componentList) {
+              this.updateNodeWorldTransform(node);
+            }
+          }
+        }
+        /**
+         * Shader class for compiling and linking shader programs.
+         *
+         * @class Shader
+         * @typedef {Shader}
+         */
+        class Shader {
+          /**
+           * Compiles GLSL shader code.
+           *
+           * @static
+           * @param {WebGL2RenderingContext} glContext
+           * @param {string} shaderSourceCode
+           * @param {("vertex" | "fragment")} typeName
+           * @returns {WebGLShader}
+           */
+          static compileShader(glContext, shaderSourceCode, typeName) {
+            // Determine which type of shader we're compiling.
+            var type = 0;
+            if (typeName == "vertex") type = glContext.VERTEX_SHADER;
+            else if (typeName == "fragment") type = glContext.FRAGMENT_SHADER;
+            // Create the shader
+            var shader = glContext.createShader(type);
+            if (shader == null) throw new Error("Cannot create WebGL shader.");
+            // Give the shader the code and compile.
+            glContext.shaderSource(shader, shaderSourceCode);
+            glContext.compileShader(shader);
+            // Throw an error if something goes wrong.
+            var shaderTypeString = `${
+              type == glContext.VERTEX_SHADER
+                ? "Vertex"
+                : type == glContext.FRAGMENT_SHADER
+                  ? "Fragment"
+                  : () => {
+                      throw "Not a valid GLEnum type for shaders. Use either gl.VERTEX_SHADER or gl.FRAGMENT_SHADER";
+                    }
+            }`;
+            if (
+              !glContext.getShaderParameter(shader, glContext.COMPILE_STATUS)
+            ) {
+              throw `${shaderTypeString} shader failed to compile. ${glContext.getShaderInfoLog(shader)}.`;
+            }
+            return shader;
+          }
+          /**
+           * Links shaders into a shader program.
+           *
+           * @static
+           * @param {WebGL2RenderingContext} glContext
+           * @param {WebGLShader} vertexShader
+           * @param {WebGLShader} fragmentShader
+           * @returns {WebGLProgram}
+           */
+          static linkShaders(glContext, vertexShader, fragmentShader) {
+            // Make the program and link the shaders in it.
+            var program = glContext.createProgram();
+            glContext.attachShader(program, vertexShader);
+            glContext.attachShader(program, fragmentShader);
+            glContext.linkProgram(program);
+            // Throw error if something is wrong.
+            if (
+              !glContext.getProgramParameter(program, glContext.LINK_STATUS)
+            ) {
+              throw `Shader program failed to link. ${glContext.getProgramInfoLog(program)}`;
+            }
+            // Delete the shaders to free memory.
+            glContext.deleteShader(vertexShader);
+            glContext.deleteShader(fragmentShader);
+            return program;
+          }
+          /**
+           * Creates an instance of Shader.
+           *
+           * @constructor
+           * @param {WebGL2RenderingContext} gl
+           * @param {string} vertexShaderCode
+           * @param {string} fragmentShaderCode
+           */
+          constructor(gl, vertexShaderCode, fragmentShaderCode) {
+            var vertexShader = Shader.compileShader(
+              gl,
+              vertexShaderCode,
+              "vertex",
+            );
+            var fragmentShader = Shader.compileShader(
+              gl,
+              fragmentShaderCode,
+              "fragment",
+            );
+            this.shader = Shader.linkShaders(gl, vertexShader, fragmentShader);
+            this.gl = gl;
+            this.uniforms = {};
+            // Get all active uniforms in the program and store info and location in uniforms object.
+            var activeUniforms = gl.getProgramParameter(
+              this.shader,
+              gl.ACTIVE_UNIFORMS,
+            );
+            for (var i = 0; i < activeUniforms; i++) {
+              var uniform = gl.getActiveUniform(this.shader, i);
+              if (uniform == null)
+                throw new Error("Uniform index is invalid for some reason.");
+              var location = gl.getUniformLocation(this.shader, uniform.name);
+              if (location == null) continue;
+              this.uniforms[uniform.name] = {
+                size: uniform.size,
+                type: uniform.type,
+                location,
+              };
+            }
+            // Pre-cache uniform types to their corresponding uniform setter functions.
+            this.GLENUM_TO_SETTER = {
+              [gl.FLOAT]: (location, value) => gl.uniform1f(location, value),
+              [gl.INT]: (location, value) => gl.uniform1i(location, value),
+              [gl.UNSIGNED_INT]: (location, value) =>
+                gl.uniform1ui(location, value),
+              [gl.BOOL]: (location, value) => gl.uniform1i(location, value),
+              [gl.FLOAT_VEC2]: (location, value) =>
+                gl.uniform2fv(location, value),
+              [gl.FLOAT_VEC3]: (location, value) =>
+                gl.uniform3fv(location, value),
+              [gl.FLOAT_VEC4]: (location, value) =>
+                gl.uniform4fv(location, value),
+              [gl.INT_VEC2]: (location, value) =>
+                gl.uniform2iv(location, value),
+              [gl.INT_VEC3]: (location, value) =>
+                gl.uniform3iv(location, value),
+              [gl.INT_VEC4]: (location, value) =>
+                gl.uniform4iv(location, value),
+              [gl.UNSIGNED_INT_VEC2]: (location, value) =>
+                gl.uniform2uiv(location, value),
+              [gl.UNSIGNED_INT_VEC3]: (location, value) =>
+                gl.uniform3uiv(location, value),
+              [gl.UNSIGNED_INT_VEC4]: (location, value) =>
+                gl.uniform4uiv(location, value),
+              [gl.BOOL_VEC2]: (location, value) =>
+                gl.uniform2iv(location, value),
+              [gl.BOOL_VEC3]: (location, value) =>
+                gl.uniform3iv(location, value),
+              [gl.BOOL_VEC4]: (location, value) =>
+                gl.uniform4iv(location, value),
+              [gl.FLOAT_MAT2]: (location, value) =>
+                gl.uniformMatrix2fv(location, false, value),
+              [gl.FLOAT_MAT3]: (location, value) =>
+                gl.uniformMatrix3fv(location, false, value),
+              [gl.FLOAT_MAT4]: (location, value) =>
+                gl.uniformMatrix4fv(location, false, value),
+              [gl.FLOAT_MAT2x3]: (location, value) =>
+                gl.uniformMatrix2x3fv(location, false, value),
+              [gl.FLOAT_MAT2x4]: (location, value) =>
+                gl.uniformMatrix2x4fv(location, false, value),
+              [gl.FLOAT_MAT3x2]: (location, value) =>
+                gl.uniformMatrix3x2fv(location, false, value),
+              [gl.FLOAT_MAT3x4]: (location, value) =>
+                gl.uniformMatrix3x4fv(location, false, value),
+              [gl.FLOAT_MAT4x2]: (location, value) =>
+                gl.uniformMatrix4x2fv(location, false, value),
+              [gl.FLOAT_MAT4x3]: (location, value) =>
+                gl.uniformMatrix4x3fv(location, false, value),
+              [gl.SAMPLER_2D]: (location, value) =>
+                gl.uniform1i(location, value),
+            };
+          }
+          /** Use this shader program */
+          use() {
+            this.gl.useProgram(this.shader);
+          }
+          /**
+           * Set uniform
+           *
+           * @param {string} name Name of the uniform in program. Must be an active uniform.
+           * @param {*} value Value to set the uniform to.
+           */
+          setUniform(name, value) {
+            this.GLENUM_TO_SETTER[this.uniforms[name].type](
+              this.uniforms[name].location,
+              value,
+            );
+          }
+        }
+        // Basic vertex shader
+        var basicVS = /*glsl*/ `#version 300 es
+      // Set the attribute locations beforehand.
+      layout (location = 0) in vec3 position;
+      layout (location = 1) in vec3 normal;
+      layout (location = 2) in vec2 texcoord_0;
+      layout (location = 3) in vec4 tangent;
+
+      uniform mat4 viewProjection;
+      uniform mat4 model;
+
+      // Normal matrix is used for handling normal transforms
+      uniform mat3 normalMatrix;
+
+      out vec2 v_texcoord_0;
+      out vec3 v_normal;
+      out vec3 v_fragPos;
+      out vec3 v_tangent;
+      out float v_tangent_sign;
+
+      void main() {
+          gl_Position = viewProjection * model * vec4(position, 1.0f);
+          v_normal = normalize(normalMatrix * normal);
+          v_texcoord_0 = texcoord_0;
+          v_fragPos = vec3(model * vec4(position, 1.0f));
+          v_tangent = normalize(normalMatrix * tangent.xyz);
+          v_tangent_sign = tangent.w;
+      }
+  `;
+        // Point light fragment shader, used for lights because lights remain a constant color.
+        var pointLightFS = /*glsl*/ `#version 300 es
+      precision highp float;
+
+      in vec2 v_texcoord_0;
+      out vec4 fragmentColor;
+
+      uniform vec3 emissiveFactor;
+      uniform bool isTexture;
+      uniform sampler2D textureMap;
+
+      void main() {
+          // Simply output the color of the light.
+          if (isTexture) {
+              fragmentColor = vec4(texture(textureMap, v_texcoord_0).rgb, 1.0);
+          } else {
+              fragmentColor = vec4(emissiveFactor, 1.0);
+          }
+      }
+  `;
+        // Phong shader, used for non-light objects.
+        var phongFS = /*glsl*/ `#version 300 es
+      precision highp float;
+
+      in vec2 v_texcoord_0;
+      in vec3 v_normal;
+      in vec3 v_fragPos;
+      in vec3 v_tangent;
+      in float v_tangent_sign;
+
+      out vec4 fragmentColor;
+
+      // Camera position
+      uniform vec3 viewPos;
+
+      // Material data in PBR form (supplied by GLTF)
+      struct PBR_Material {
+      vec4 albedo;
+      float metalness;
+      sampler2D albedoMap;
+      sampler2D MRmap;
+      float roughness;
+
+      bool isTexture;
+      bool isMRt;
+      };
+      uniform PBR_Material pbr_material;
+
+      // Material data in Phong form (used for conversion)
+      struct Material {
+      vec3 ambient;
+      vec3 diffuse;
+      vec3 specular;
+      float shininess;
+      };
+
+      // Directional light
+      struct DirLight {
+      vec3 direction;
+      vec3 ambient;
+      vec3 diffuse;
+      vec3 specular;
+      };
+      uniform DirLight dirLight;
+
+      // Point lights
+      struct PointLight {
+      vec3 position;
+
+      vec3 ambient;
+      vec3 diffuse;
+      vec3 specular;
+
+      float constant;
+      float linear;
+      float quadratic;
+      };
+
+      uniform PointLight pointLights[${MAX_POINT_LIGHTS}];
+      uniform uint numPointLights;
+
+      // Spot lights
+      struct SpotLight {
+      vec3 position;
+      vec3 direction;
+      float cutOff;
+      float outerCufOff;
+
+      vec3 ambient;
+      vec3 diffuse;
+      vec3 specular;
+
+      float constant;
+      float linear;
+      float quadratic;
+      };
+      uniform SpotLight spotLights[${MAX_SPOT_LIGHTS}];
+      uniform uint numSpotLights;
+
+      // Shader lighting calculations all use Phong lighting.
+      // Ambient light is the "base" amount or "default" lighting.
+      // Diffuse light depends on the angle between the light and the normal vector of that fragment
+      // Specular light factors in shininess and how close the reflected angle of the light is to the viewer's angle
+
+      vec3 CalcDirLight(DirLight light, Material material, vec3 normal, vec3 viewDir) {
+      vec3 lightDir = normalize(-light.direction);
+      float diff = max(dot(normal, lightDir), 0.0);
+      vec3 reflectDir = reflect(-lightDir, normal);
+      float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+
+      vec3 ambient = light.ambient * material.ambient;
+      vec3 diffuse = light.diffuse * diff * material.diffuse;
+      vec3 specular = light.specular * spec * material.specular;
+
+      return (ambient + diffuse + specular);
+      }
+
+      vec3 CalcPointLight(PointLight light, Material material, vec3 normal, vec3 fragPos, vec3 viewDir) {
+      vec3 lightDir = normalize(light.position - fragPos);
+      
+      float diff = max(dot(normal, lightDir), 0.0);
+
+      vec3 reflectDir = reflect(-lightDir, normal);
+      float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+
+      float distance = length(light.position - fragPos);
+      float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+
+      vec3 ambient = light.ambient * material.ambient;
+      vec3 diffuse = light.diffuse * diff * material.diffuse;
+      vec3 specular = light.specular * spec * material.specular;
+
+      ambient *= attenuation;
+      diffuse *= attenuation;
+      specular *= attenuation;
+
+      return (ambient + diffuse + specular);
+      }
+
+      vec3 CalcSpotLight(SpotLight light, Material material, vec3 normal, vec3 fragPos, vec3 viewDir) {
+      vec3 lightDir = normalize(light.position - fragPos);
+      float theta = dot(lightDir, normalize(-light.direction));
+      float epsilon = light.cutOff - light.outerCufOff;
+      float intensity = clamp((theta - light.outerCufOff) / epsilon, 0.0, 1.0);
+
+      float diff = max(dot(normal, lightDir), 0.0);
+
+      vec3 reflectDir = reflect(-lightDir, normal);
+      float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+
+      float distance = length(light.position - fragPos);
+      float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+
+      vec3 ambient = light.ambient * material.ambient;
+      vec3 diffuse = light.diffuse * diff * material.diffuse;
+      vec3 specular = light.specular * spec * material.specular;
+
+      ambient *= attenuation * intensity;
+      diffuse *= attenuation * intensity;
+      specular *= attenuation * intensity;
+
+      return (ambient + diffuse + specular);
+      }
+
+      uniform bool isNormalMap;
+      uniform sampler2D normalMap;
+
+      void main() {
+      Material material;
+
+      float metalness;
+      float roughness;
+
+      if (pbr_material.isMRt) {
+        roughness = texture(pbr_material.MRmap, v_texcoord_0).g;
+        metalness = texture(pbr_material.MRmap, v_texcoord_0).b;
+      } else {
+        roughness = pbr_material.roughness;
+        metalness = pbr_material.metalness;
+      }
+
+      // Because glb gives PBR materials by default, I need to convert to glb. I used AI to help me figure out how to convert PBR to Phong.
+      if (pbr_material.isTexture) {
+          vec4 texColor = texture(pbr_material.albedoMap, v_texcoord_0);
+          if (texColor.a < 0.1) {
+              discard;
+          }
+
+          material.diffuse = texture(pbr_material.albedoMap, v_texcoord_0).rgb * (1.0 - metalness);
+          material.specular = mix(vec3(0.04), texture(pbr_material.albedoMap, v_texcoord_0).rgb, metalness);
+      } else {
+          material.diffuse = pbr_material.albedo.rgb * (1.0 - metalness);
+          material.specular = mix(vec3(0.04), pbr_material.albedo.rgb, metalness);
+      }
+      material.shininess = pow(2.0, 10.0 * (1.0 - roughness));
+      material.ambient = material.diffuse * 0.1;
+
+      // Normalize the normal vector and view direction.
+      vec3 norm = v_normal;
+
+      if (isNormalMap) {
+        vec3 N = v_normal;
+        vec3 T = v_tangent;
+        vec3 B = normalize(v_tangent_sign * cross(N, T));
+
+        mat3 TBN = mat3(T, B, N);
+
+        vec3 normalTex = texture(normalMap, v_texcoord_0).xyz * 2.0 - 1.0;
+        vec3 worldNormal = normalize(TBN * normalTex);
+        norm = worldNormal;
+      }
+
+      vec3 viewDir = normalize(viewPos - v_fragPos);
+      
+      // Total light equals the sums of all the lights.
+      vec3 result = CalcDirLight(dirLight, material, norm, viewDir);
+
+      for (uint i = 0u; i < numPointLights; i++) {
+          result += CalcPointLight(pointLights[i], material, norm, v_fragPos, viewDir);
+      }
+      for (uint i = 0u; i < numSpotLights; i++) {
+          result += CalcSpotLight(spotLights[i], material, norm, v_fragPos, viewDir);
+      }
+
+      // No transparents allowed yet.
+      fragmentColor = vec4(result, 1.0);
+      }
+  `;
+        /**
+         * Renderer class, puts everything together.
+         *
+         * @class Renderer
+         * @typedef {Renderer}
+         */
+        class Renderer {
+          /**
+           * Creates an instance of Renderer.
+           *
+           * @constructor
+           * @param {string} canvasId Id of the canvas element
+           */
+          constructor(canvasId) {
+            // Get the canvas
+            var canvas = document.getElementById(canvasId);
+            if (canvas == null) throw new Error("Canvas id is not valid");
+            // Get the WebGL context
+            var gl = canvas.getContext("webgl2");
+            if (gl == null)
+              throw new Error(
+                "WebGL2 is not supported by your browser or device.",
+              );
+            this.gl = gl;
+            this.gl.enable(this.gl.DEPTH_TEST);
+
+            // Get asset manager and scene
+            this.assetManager = new AssetManager(this.gl);
+            this.scene = new Scene(this.assetManager);
+            // Compile shader programs
+            this.shader = {
+              phong: new Shader(this.gl, basicVS, phongFS),
+              light: new Shader(this.gl, basicVS, pointLightFS),
+            };
+            // Set directional light defaults
+            this.directionalLight = {
+              direction: glMatrix.vec3.fromValues(0.3, -0.5, -0.8),
+              ambient: glMatrix.vec3.fromValues(0.0, 0.0, 0.0),
+              diffuse: glMatrix.vec3.fromValues(0.0, 0.0, 0.0),
+              specular: glMatrix.vec3.fromValues(0.0, 0.0, 0.0),
+            };
+          }
+          /** Utility function used for changing internal canvas sizes when canvas dimensions are changed. */
+          resizeCanvas() {
+            var canvas = this.gl.canvas;
+            if (
+              canvas.width != canvas.clientWidth ||
+              canvas.height != canvas.clientHeight
+            ) {
+              canvas.width = canvas.clientWidth;
+              canvas.height = canvas.clientHeight;
+            }
+            this.gl.viewport(0, 0, this.gl.canvas.width, this.gl.canvas.height);
+          }
+
+          /**
+           * Gets list of primitives, frustum culls non-visible primitives, and sorts them into categories for more efficient rendering.
+           *
+           * @returns {{ opaque: { solid: {}; texture: {}; }; light: { pointLight: {}; spotLight: {}; }; }}
+           */
+          cullAndSortPrimitives(flatList) {
+            var sortedLists = {
+              opaque: {
+                solid: [],
+                texture: {},
+              },
+              blend: {
+                solid: [],
+                texture: {},
+              },
+              light: {
+                pointLight: [],
+                spotLight: [],
+              },
+            };
+            // BEGIN AI CODE - Frustum definition (I started translating C++ to JS, then realized that AI is good at this kind of stuff so used it to complete translation and verify.) I don't fully understand the math behind this code, but it essentially splits the frustum into planes.
+            // Describe a frustum
+            var frustum = {
+              topFace: {
+                normal: glMatrix.vec3.fromValues(0, 1, 0),
+                point: glMatrix.vec3.fromValues(0, 0, 0),
+              },
+              bottomFace: {
+                normal: glMatrix.vec3.fromValues(0, 1, 0),
+                point: glMatrix.vec3.fromValues(0, 0, 0),
+              },
+              rightFace: {
+                normal: glMatrix.vec3.fromValues(0, 1, 0),
+                point: glMatrix.vec3.fromValues(0, 0, 0),
+              },
+              leftFace: {
+                normal: glMatrix.vec3.fromValues(0, 1, 0),
+                point: glMatrix.vec3.fromValues(0, 0, 0),
+              },
+              farFace: {
+                normal: glMatrix.vec3.fromValues(0, 1, 0),
+                point: glMatrix.vec3.fromValues(0, 0, 0),
+              },
+              nearFace: {
+                normal: glMatrix.vec3.fromValues(0, 1, 0),
+                point: glMatrix.vec3.fromValues(0, 0, 0),
+              },
+            };
+            var cam = this.scene.camera;
+            var aspect = this.gl.canvas.width / this.gl.canvas.height;
+            var halfVSide = cam.far * Math.tan(cam.fovy * 0.5);
+            var halfHSide = halfVSide * aspect;
+            var frontMultFar = glMatrix.vec3.create();
+            glMatrix.vec3.scale(
+              frontMultFar,
+              cam.transform.getForward(),
+              cam.far,
+            );
+            // Near face
+            glMatrix.vec3.scale(
+              frustum.nearFace.point,
+              cam.transform.getForward(),
+              cam.near,
+            );
+            glMatrix.vec3.add(
+              frustum.nearFace.point,
+              frustum.nearFace.point,
+              cam.transform.translation,
+            );
+            glMatrix.vec3.copy(
+              frustum.nearFace.normal,
+              cam.transform.getForward(),
+            );
+            // Far face
+            glMatrix.vec3.add(
+              frustum.farFace.point,
+              cam.transform.translation,
+              frontMultFar,
+            );
+            glMatrix.vec3.copy(
+              frustum.farFace.normal,
+              cam.transform.getForward(),
+            );
+            glMatrix.vec3.scale(
+              frustum.farFace.normal,
+              frustum.farFace.normal,
+              -1,
+            );
+            // Right face
+            glMatrix.vec3.copy(
+              frustum.rightFace.point,
+              cam.transform.translation,
+            );
+            var tempRight = glMatrix.vec3.create();
+            glMatrix.vec3.scale(tempRight, cam.transform.getRight(), halfHSide);
+            glMatrix.vec3.sub(
+              frustum.rightFace.normal,
+              frontMultFar,
+              tempRight,
+            );
+            glMatrix.vec3.cross(
+              frustum.rightFace.normal,
+              frustum.rightFace.normal,
+              cam.transform.getUp(),
+            );
+            // Left face
+            glMatrix.vec3.copy(
+              frustum.leftFace.point,
+              cam.transform.translation,
+            );
+            var tempLeft = glMatrix.vec3.create();
+            glMatrix.vec3.scale(tempLeft, cam.transform.getRight(), halfHSide);
+            glMatrix.vec3.add(frustum.leftFace.normal, frontMultFar, tempLeft);
+            glMatrix.vec3.cross(
+              frustum.leftFace.normal,
+              cam.transform.getUp(),
+              frustum.leftFace.normal,
+            );
+            // Top face
+            glMatrix.vec3.copy(
+              frustum.topFace.point,
+              cam.transform.translation,
+            );
+            var tempTop = glMatrix.vec3.create();
+            glMatrix.vec3.scale(tempTop, cam.transform.getUp(), halfVSide);
+            glMatrix.vec3.sub(frustum.topFace.normal, frontMultFar, tempTop);
+            glMatrix.vec3.cross(
+              frustum.topFace.normal,
+              cam.transform.getRight(),
+              frustum.topFace.normal,
+            );
+            // Bottom face
+            glMatrix.vec3.copy(
+              frustum.bottomFace.point,
+              cam.transform.translation,
+            );
+            var tempBottom = glMatrix.vec3.create();
+            glMatrix.vec3.scale(tempBottom, cam.transform.getUp(), halfVSide);
+            glMatrix.vec3.add(
+              frustum.bottomFace.normal,
+              frontMultFar,
+              tempBottom,
+            );
+            glMatrix.vec3.cross(
+              frustum.bottomFace.normal,
+              frustum.bottomFace.normal,
+              cam.transform.getRight(),
+            );
+            glMatrix.vec3.normalize(
+              frustum.nearFace.normal,
+              frustum.nearFace.normal,
+            );
+            glMatrix.vec3.normalize(
+              frustum.farFace.normal,
+              frustum.farFace.normal,
+            );
+            glMatrix.vec3.normalize(
+              frustum.rightFace.normal,
+              frustum.rightFace.normal,
+            );
+            glMatrix.vec3.normalize(
+              frustum.leftFace.normal,
+              frustum.leftFace.normal,
+            );
+            glMatrix.vec3.normalize(
+              frustum.topFace.normal,
+              frustum.topFace.normal,
+            );
+            glMatrix.vec3.normalize(
+              frustum.bottomFace.normal,
+              frustum.bottomFace.normal,
+            );
+            // END AI CODE
+            // This function calculates how far a point is in front of the plane.
+            function getSignedDistanceToPlane(face, center) {
+              return (
+                glMatrix.vec3.dot(face.normal, center) -
+                glMatrix.vec3.dot(face.normal, face.point)
+              );
+            }
+            // This function checks if a sphere is on or in front of the plane.
+            function isOnOrForwardPlane(face, center, radius) {
+              return getSignedDistanceToPlane(face, center) > -radius;
+            }
+            // This function checks that a sphere is in a frustrum.
+            function checkAllPlanes(center, radius) {
+              return (
+                isOnOrForwardPlane(frustum.leftFace, center, radius) &&
+                isOnOrForwardPlane(frustum.rightFace, center, radius) &&
+                isOnOrForwardPlane(frustum.farFace, center, radius) &&
+                isOnOrForwardPlane(frustum.nearFace, center, radius) &&
+                isOnOrForwardPlane(frustum.topFace, center, radius) &&
+                isOnOrForwardPlane(frustum.bottomFace, center, radius)
+              );
+            }
+            // Used for bounding sphere calculations
+            var ds = glMatrix.vec3.create();
+            var center = glMatrix.vec3.create();
+            var radius = 0;
+            // Some meshes have emissive factors set to zero. Use this variable to check for those.
+            var noEmissiveFactor = JSON.stringify([0, 0, 0]);
+            // Now sort the components
+            for (var component of flatList) {
+              var mesh = this.assetManager.meshes[component.mesh];
+
+              // That is, get the primitives and sort them.
+              for (var primitive of mesh.primitives) {
+                var material = this.assetManager.getMaterial(
+                  primitive.material.folder,
+                  primitive.material.index,
+                );
+                // If not a light, check if can be frustum culled. (Lights must be in the scene even if not visible because they can influence visible objects' lighting.)
+                if (
+                  material.emissiveFactor == undefined ||
+                  JSON.stringify(material.emissiveFactor) == noEmissiveFactor
+                ) {
+                  /// BEGIN AI CODE - I was struggling with some bugs here and AI helped me get it correct.
+                  // Calculate center of the object in local coordinate space
+                  glMatrix.vec3.add(center, primitive.vMin, primitive.vMax);
+                  glMatrix.vec3.scale(center, center, 0.5);
+                  // Transform that center to world space using the transformation matrix of the component
+                  glMatrix.vec3.transformMat4(
+                    center,
+                    center,
+                    component.worldMatrix,
+                  );
+                  // Take a cross-diagonal of the AABB box, make half of that the radius, and multiply it by the largest scale to get a guarenteed complete bounding sphere.
+                  glMatrix.vec3.sub(ds, primitive.vMax, primitive.vMin);
+
+                  var componentScale = glMatrix.vec3.create();
+                  glMatrix.mat4.getScaling(
+                    componentScale,
+                    component.worldMatrix,
+                  );
+
+                  var maxScale = Math.max(
+                    componentScale[0],
+                    componentScale[1],
+                    componentScale[2],
+                  );
+                  radius = (glMatrix.vec3.len(ds) / 2) * maxScale;
+                  /// END AI CODE
+                  // Not in the frustum? Don't bother sorting it.
+                  if (!checkAllPlanes(center, radius)) {
+                    continue;
+                  }
+                }
+                // Give the primitive necessary info for drawing.
+                var primitiveInstance = {
+                  ...primitive,
+                  transform: component.worldMatrix,
+                  normalMatrix: component.normalMatrix,
+                  light: component.light,
+                };
+                // Get the material
+
+                // Sort by material
+                if (
+                  material.emissiveFactor != undefined &&
+                  JSON.stringify(material.emissiveFactor) != noEmissiveFactor
+                ) {
+                  if (
+                    primitiveInstance.light == null ||
+                    primitiveInstance.light == undefined
+                  ) {
+                    primitiveInstance.light = {
+                      lightType: "point",
+                      lightRange: 30,
+                    };
+                  }
+                  // This is a light
+                  if ("emissiveTexture" in material) {
+                    // This is a lighted texture
+                    var folder = primitive.material.folder;
+                    var index = material.emissiveTexture.index;
+
+                    primitiveInstance.lightTexture = {
+                      folder,
+                      index,
+                      lightType: primitiveInstance.light.lightType,
+                    };
+                  }
+
+                  if (primitiveInstance.light.lightType == "point") {
+                    sortedLists.light.pointLight.push(primitiveInstance);
+                  } else if (primitiveInstance.light.lightType == "spot") {
+                    sortedLists.light.spotLight.push(primitiveInstance);
+                  }
+                } else if (
+                  material.alphaMode == undefined ||
+                  material.alphaMode == "OPAQUE"
+                ) {
+                  if ("baseColorTexture" in material.pbrMetallicRoughness) {
+                    // This is a textured material.
+                    // Get the image location
+                    var folder = primitive.material.folder;
+                    var textureList = sortedLists.opaque.texture;
+                    var index =
+                      material.pbrMetallicRoughness.baseColorTexture.index;
+                    // Create folder and indexes if needed.
+                    if (!(folder in textureList)) {
+                      textureList[folder] = {};
+                    }
+                    if (!(index in textureList[folder])) {
+                      textureList[folder][index] = [];
+                    }
+                    // Push to list of opaque textures with this unique texture.
+                    textureList[folder][index].push(primitiveInstance);
+                  } else {
+                    // This is a normal solid color object.
+                    sortedLists.opaque.solid.push(primitiveInstance);
+                  }
+                } else if (material.alphaMode == "BLEND") {
+                  if ("baseColorTexture" in material.pbrMetallicRoughness) {
+                    // This is a textured material.
+                    // Get the image location
+                    var folder = primitive.material.folder;
+                    var textureList = sortedLists.blend.texture;
+                    var index =
+                      material.pbrMetallicRoughness.baseColorTexture.index;
+                    // Create folder and indexes if needed.
+                    if (!(folder in textureList)) {
+                      textureList[folder] = {};
+                    }
+                    if (!(index in textureList[folder])) {
+                      textureList[folder][index] = [];
+                    }
+                    // Push to list of opaque textures with this unique texture.
+                    textureList[folder][index].push(primitiveInstance);
+                  } else {
+                    // This is a normal solid color object.
+                    sortedLists.blend.solid.push(primitiveInstance);
+                  }
+                }
+              }
+            }
+            /*
+      // At the end of cullAndSortPrimitives, right before return sortedLists
+      console.log("=== SORTED LISTS ===");
+      console.log("Opaque Solid:", sortedLists.opaque.solid.length);
+      console.log(
+        "Opaque Texture folders:",
+        Object.keys(sortedLists.opaque.texture),
+      );
+      for (var folder in sortedLists.opaque.texture) {
+        for (var index in sortedLists.opaque.texture[folder]) {
+          console.log(
+            `  ${folder}[${index}]:`,
+            sortedLists.opaque.texture[folder][index].length,
+            "primitives",
+          );
+        }
+      }
+      console.log("Point Lights:", sortedLists.light.pointLight.length);
+      console.log("Spot Lights:", sortedLists.light.spotLight.length);
+
+      // Log details of each category
+      console.log("\n=== TEXTURED PRIMITIVES ===");
+      for (var folder in sortedLists.opaque.texture) {
+        for (var index in sortedLists.opaque.texture[folder]) {
+          for (var prim of sortedLists.opaque.texture[folder][index]) {
+            var mat = this.assetManager.getMaterial(
+              prim.material.folder,
+              prim.material.index,
+            );
+            console.log("Texture primitive:", {
+              folder,
+              index,
+              hasBaseColor: "baseColorTexture" in mat.pbrMetallicRoughness,
+              hasNormal: "normalTexture" in mat,
+              hasMR: "metallicRoughnessTexture" in mat.pbrMetallicRoughness,
+              emissive: mat.emissiveFactor,
+            });
+          }
+        }
+      }
+
+      console.log("\n=== LIGHTS ===");
+      for (var light of sortedLists.light.pointLight) {
+        var mat = this.assetManager.getMaterial(
+          light.material.folder,
+          light.material.index,
+        );
+        console.log("Point light:", {
+          emissive: mat.emissiveFactor,
+          baseColor: mat.pbrMetallicRoughness?.baseColorFactor,
+          hasTexture: "lightTexture" in light,
+        });
+      }
+
+      return sortedLists;
+      */
+            return sortedLists;
+          }
+
+          flattenNode(node) {
+            var list = [];
+            if ("children" in node) {
+              for (var child of node.children) {
+                list.push(...this.flattenNode(child));
+              }
+            }
+            if (node.renderComponent.mesh) {
+              var normalMatrix = glMatrix.mat3.create();
+              var utilMatrix = glMatrix.mat4.create();
+
+              // Invert the matrix, transpose it, and take the upper 3x3 to get the normal matrix.
+              glMatrix.mat4.invert(utilMatrix, node.worldMatrix);
+              glMatrix.mat4.transpose(utilMatrix, utilMatrix);
+              glMatrix.mat3.fromMat4(normalMatrix, utilMatrix);
+
+              node.normalMatrix = normalMatrix;
+              node.mesh = node.renderComponent.mesh;
+              node.light = node.renderComponent.light;
+
+              list.push(node);
+            }
+
+            return list;
+          }
+          flattenSceneList(list) {
+            var flatList = [];
+            for (var child of list) {
+              flatList.push(...this.flattenNode(child));
+            }
+            return flatList;
+          }
+
+          /** Render the scene! */
+          render() {
+            this.resizeCanvas();
+
+            this.scene.updateNodesTree();
+            var flatList = this.flattenSceneList(this.scene.componentList);
+
+            // Get a list.
+            var primitiveList = this.cullAndSortPrimitives(flatList);
+            // Clear the canvas
+            this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+            // Get the projection matrix.
+            var projection = glMatrix.mat4.create();
+            glMatrix.mat4.perspective(
+              projection,
+              this.scene.camera.fovy,
+              this.gl.canvas.width / this.gl.canvas.height,
+              this.scene.camera.near,
+              this.scene.camera.far,
+            );
+            // Create the view projection matrix.
+            var viewProjection = glMatrix.mat4.create();
+            glMatrix.mat4.multiply(
+              viewProjection,
+              projection,
+              this.scene.camera.getViewMatrix(),
+            );
+            // Set the phong shader
+            var shader = this.shader["phong"];
+            shader.use();
+            // Set directional lighting
+            shader.setUniform(
+              "dirLight.direction",
+              this.directionalLight.direction,
+            );
+            shader.setUniform(
+              "dirLight.ambient",
+              this.directionalLight.ambient,
+            );
+            shader.setUniform(
+              "dirLight.diffuse",
+              this.directionalLight.diffuse,
+            );
+            shader.setUniform(
+              "dirLight.specular",
+              this.directionalLight.specular,
+            );
+            // Set view projection and view position
+            shader.setUniform("viewProjection", viewProjection);
+            shader.setUniform(
+              "viewPos",
+              this.scene.camera.transform.translation,
+            );
+
+            this.gl.enable(this.gl.CULL_FACE);
+
+            // Set number of point lights.
+            if (primitiveList.light.pointLight.length > MAX_POINT_LIGHTS)
+              throw new Error("Too many point lights!");
+            shader.setUniform(
+              "numPointLights",
+              primitiveList.light.pointLight.length,
+            );
+            // Loop through the point light array in the shader and set their uniforms.
+            for (var lightIndex in primitiveList.light.pointLight) {
+              var light = primitiveList.light.pointLight[lightIndex];
+              var material = this.assetManager.getMaterial(
+                light.material.folder,
+                light.material.index,
+              );
+              shader.setUniform(`pointLights[${lightIndex}].ambient`, [
+                material?.emissiveFactor[0] * 0.1,
+                material?.emissiveFactor[1] * 0.1,
+                material?.emissiveFactor[2] * 0.1,
+              ]);
+              shader.setUniform(
+                `pointLights[${lightIndex}].diffuse`,
+                material?.emissiveFactor,
+              );
+              shader.setUniform(
+                `pointLights[${lightIndex}].specular`,
+                material?.emissiveFactor,
+              );
+              shader.setUniform(`pointLights[${lightIndex}].constant`, 1);
+              shader.setUniform(
+                `pointLights[${lightIndex}].linear`,
+                4.5 / light.light?.lightRange,
+              );
+              shader.setUniform(
+                `pointLights[${lightIndex}].quadratic`,
+                75 / (light.light?.lightRange * light.light?.lightRange),
+              );
+              var translation = glMatrix.vec3.create();
+              glMatrix.mat4.getTranslation(translation, light.transform);
+              shader.setUniform(
+                `pointLights[${lightIndex}].position`,
+                translation,
+              );
+            }
+            // Set number of spot lights.
+            if (primitiveList.light.spotLight.length > MAX_SPOT_LIGHTS)
+              throw new Error("Too many point lights!");
+            shader.setUniform(
+              "numSpotLights",
+              primitiveList.light.spotLight.length,
+            );
+            // Loop through the spot light array in the shader and set uniforms.
+            for (var lightIndex in primitiveList.light.spotLight) {
+              var light = primitiveList.light.spotLight[lightIndex];
+              var material = this.assetManager.getMaterial(
+                light.material.folder,
+                light.material.index,
+              );
+              shader.setUniform(`spotLights[${lightIndex}].ambient`, [
+                material?.emissiveFactor[0] * 0.1,
+                material?.emissiveFactor[1] * 0.1,
+                material?.emissiveFactor[2] * 0.1,
+              ]);
+              shader.setUniform(
+                `spotLights[${lightIndex}].diffuse`,
+                material?.emissiveFactor,
+              );
+              shader.setUniform(
+                `spotLights[${lightIndex}].specular`,
+                material?.emissiveFactor,
+              );
+              shader.setUniform(`spotLights[${lightIndex}].constant`, 1);
+              shader.setUniform(
+                `spotLights[${lightIndex}].linear`,
+                4.5 / light.light?.lightRange,
+              );
+              shader.setUniform(
+                `spotLights[${lightIndex}].quadratic`,
+                75 / (light.light?.lightRange * light.light?.lightRange),
+              );
+              var translation = glMatrix.vec3.create();
+              glMatrix.mat4.getTranslation(translation, light.transform);
+              shader.setUniform(
+                `spotLights[${lightIndex}].position`,
+                translation,
+              );
+              shader.setUniform(
+                `spotLights[${lightIndex}].direction`,
+                light.light?.direction,
+              );
+              shader.setUniform(
+                `spotLights[${lightIndex}].cutOff`,
+                light.light?.cutOff,
+              );
+              shader.setUniform(
+                `spotLights[${lightIndex}].outerCufOff`,
+                light.light?.outerCutOff,
+              );
+            }
+
+            // Solid colored primitives
+            shader.setUniform("pbr_material.isTexture", false);
+            shader.setUniform("pbr_material.isMRt", false);
+            shader.setUniform("isNormalMap", false);
+            var solids = primitiveList.opaque.solid;
+            for (var primitive of solids) {
+              shader.setUniform("model", primitive.transform);
+              shader.setUniform("normalMatrix", primitive.normalMatrix);
+              var material = this.assetManager.getMaterial(
+                primitive.material.folder,
+                primitive.material.index,
+              );
+              shader.setUniform(
+                "pbr_material.albedo",
+                material?.pbrMetallicRoughness.baseColorFactor,
+              );
+              shader.setUniform(
+                "pbr_material.metalness",
+                material?.pbrMetallicRoughness.metallicFactor ?? 0,
+              );
+              shader.setUniform(
+                "pbr_material.roughness",
+                material?.pbrMetallicRoughness.roughnessFactor ?? 0,
+              );
+              this.gl.bindVertexArray(primitive.vao);
+              this.gl.drawElements(
+                primitive.mode,
+                primitive.count,
+                primitive.type,
+                primitive.offset,
+              );
+              this.gl.bindVertexArray(null);
+            }
+            // Textured primitives
+            var lastBoundAlbedo = null;
+            var lastBoundNormal = null;
+            var lastBoundRoughMetal = null;
+
+            shader.setUniform("pbr_material.isTexture", true);
+
+            var textures = primitiveList.opaque.texture;
+            for (var folder in textures) {
+              for (var index in textures[folder]) {
+                if (
+                  this.assetManager.getTexture(folder, Number(index)) !=
+                  lastBoundAlbedo
+                ) {
+                  this.gl.activeTexture(this.gl.TEXTURE0);
+                  this.gl.bindTexture(
+                    this.gl.TEXTURE_2D,
+                    this.assetManager.getTexture(folder, Number(index)),
+                  );
+                  shader.setUniform("pbr_material.albedoMap", 0);
+                  lastBoundAlbedo = this.assetManager.getTexture(
+                    folder,
+                    Number(index),
+                  );
+                }
+
+                for (var primitive of textures[folder][index]) {
+                  shader.setUniform("model", primitive.transform);
+                  shader.setUniform("normalMatrix", primitive.normalMatrix);
+                  var material = this.assetManager.getMaterial(
+                    primitive.material.folder,
+                    primitive.material.index,
+                  );
+
+                  if ("normalTexture" in material) {
+                    var normTexLoc = this.assetManager.getTexture(
+                      folder,
+                      Number(material.normalTexture.index),
+                    );
+                    if (normTexLoc != lastBoundNormal) {
+                      shader.setUniform("isNormalMap", true);
+                      this.gl.activeTexture(this.gl.TEXTURE2);
+                      this.gl.bindTexture(this.gl.TEXTURE_2D, normTexLoc);
+                      shader.setUniform("normalMap", 2);
+                      lastBoundNormal = normTexLoc;
+                      shader.setUniform("isNormalMap", false);
+                    }
+                  } else {
+                    shader.setUniform("isNormalMap", false);
+                  }
+
+                  if (
+                    "metallicRoughnessTexture" in material.pbrMetallicRoughness
+                  ) {
+                    var texLoc = this.assetManager.getTexture(
+                      folder,
+                      Number(
+                        material.pbrMetallicRoughness.metallicRoughnessTexture
+                          .index,
+                      ),
+                    );
+                    if (texLoc != lastBoundRoughMetal) {
+                      shader.setUniform("pbr_material.isMRt", true);
+                      this.gl.activeTexture(this.gl.TEXTURE1);
+                      this.gl.bindTexture(this.gl.TEXTURE_2D, texLoc);
+                      shader.setUniform("pbr_material.MRmap", 1);
+                      lastBoundRoughMetal = texLoc;
+                    }
+                  } else {
+                    shader.setUniform("pbr_material.isMRt", false);
+                    shader.setUniform(
+                      "pbr_material.metalness",
+                      material?.pbrMetallicRoughness.metallicFactor ?? 0,
+                    );
+                    shader.setUniform(
+                      "pbr_material.roughness",
+                      material?.pbrMetallicRoughness.roughnessFactor ?? 0,
+                    );
+                  }
+
+                  this.gl.bindVertexArray(primitive.vao);
+                  this.gl.drawElements(
+                    primitive.mode,
+                    primitive.count,
+                    primitive.type,
+                    primitive.offset,
+                  );
+                  this.gl.bindVertexArray(null);
+                }
+              }
+            }
+
+            this.gl.disable(this.gl.CULL_FACE);
+            // Textured primitives
+            var texturedTransparents = primitiveList.blend.texture;
+            for (var folder in texturedTransparents) {
+              for (var index in texturedTransparents[folder]) {
+                this.gl.activeTexture(this.gl.TEXTURE0);
+                this.gl.bindTexture(
+                  this.gl.TEXTURE_2D,
+                  this.assetManager.getTexture(folder, Number(index)),
+                );
+                shader.setUniform("pbr_material.albedoMap", 0);
+
+                for (var primitive of texturedTransparents[folder][index]) {
+                  shader.setUniform("model", primitive.transform);
+                  shader.setUniform("normalMatrix", primitive.normalMatrix);
+                  var material = this.assetManager.getMaterial(
+                    primitive.material.folder,
+                    primitive.material.index,
+                  );
+
+                  shader.setUniform(
+                    "pbr_material.metalness",
+                    material?.pbrMetallicRoughness.metallicFactor ?? 0,
+                  );
+                  shader.setUniform(
+                    "pbr_material.roughness",
+                    material?.pbrMetallicRoughness.roughnessFactor ?? 0,
+                  );
+                  this.gl.bindVertexArray(primitive.vao);
+                  this.gl.drawElements(
+                    primitive.mode,
+                    primitive.count,
+                    primitive.type,
+                    primitive.offset,
+                  );
+                  this.gl.bindVertexArray(null);
+                }
+              }
+            }
+            this.gl.enable(this.gl.CULL_FACE);
+
+            // Lights use a different shader
+            shader = this.shader["light"];
+            shader.use();
+            shader.setUniform("viewProjection", viewProjection);
+            // Draw the lights
+            for (var primitive of primitiveList.light.pointLight) {
+              if ("lightTexture" in primitive) {
+                shader.setUniform("isTexture", true);
+                this.gl.activeTexture(this.gl.TEXTURE0);
+                this.gl.bindTexture(
+                  this.gl.TEXTURE_2D,
+                  this.assetManager.getTexture(
+                    primitive.lightTexture.folder,
+                    primitive.lightTexture.index,
+                  ),
+                );
+                shader.setUniform("textureMap", 0);
+              } else {
+                shader.setUniform("isTexture", false);
+                shader.setUniform(
+                  "emissiveFactor",
+                  this.assetManager.getMaterial(
+                    primitive.material.folder,
+                    primitive.material.index,
+                  )?.emissiveFactor,
+                );
+              }
+
+              shader.setUniform("model", primitive.transform);
+
+              this.gl.bindVertexArray(primitive.vao);
+              this.gl.drawElements(
+                primitive.mode,
+                primitive.count,
+                primitive.type,
+                primitive.offset,
+              );
+              this.gl.bindVertexArray(null);
+            }
+            for (var primitive of primitiveList.light.spotLight) {
+              shader.setUniform("model", primitive.transform);
+              shader.setUniform(
+                "emissiveFactor",
+                this.assetManager.getMaterial(
+                  primitive.material.folder,
+                  primitive.material.index,
+                )?.emissiveFactor,
+              );
+              this.gl.bindVertexArray(primitive.vao);
+              this.gl.drawElements(
+                primitive.mode,
+                primitive.count,
+                primitive.type,
+                primitive.offset,
+              );
+              this.gl.bindVertexArray(null);
+            }
+          }
+        }
+        return { Renderer, RenderComponent };
+      })();
+    </script>
+    <script type>
+      var [CubicHitbox, Ray, Cone, Sweep] = (function () {
+        /** Axis-aligned cubic hitbox (more concisely, AABB).
+         *
+         * @class CubicHitbox
+         * @typedef {CubicHitbox}
+         */
+        class CubicHitbox {
+          /** Creates an instance of CubicHitbox.
+           *
+           * @constructor
+           * @param {Number} x1
+           * @param {Number} y1
+           * @param {Number} z1
+           * @param {Number} x2
+           * @param {Number} y2
+           * @param {Number} z2
+           */
+          constructor(x1, y1, z1, x2, y2, z2) {
+            this.set(x1, y1, z1, x2, y2, z2);
+          }
+          /** Tests for collisions.
+           *
+           * @param {CubicHitbox} that
+           * @returns {Boolean}
+           */
+          collide(that) {
+            // Detects if it collides on every axis, then spits out the result
+            return (
+              this.x1 <= that.x2 &&
+              that.x1 <= this.x2 &&
+              this.y1 <= that.y2 &&
+              that.y1 <= this.y2 &&
+              this.z1 <= that.z2 &&
+              that.z1 <= this.z2
+            );
+          }
+          /** Sets the hitbox.
+           *
+           * @param {Number} x1
+           * @param {Number} y1
+           * @param {Number} z1
+           * @param {Number} x2
+           * @param {Number} y2
+           * @param {Number} z2
+           */
+          set(x1, y1, z1, x2, y2, z2) {
+            // Instead of storing the values straight from the arguments, the 1's are the minimum of the two values
+            // and the 2's are the maximum, for no other reason than that it makes collisions 10 times more convenient
+            this.x1 = Math.min(x1, x2);
+            this.y1 = Math.min(y1, y2);
+            this.z1 = Math.min(z1, z2);
+            this.x2 = Math.max(x1, x2);
+            this.y2 = Math.max(y1, y2);
+            this.z2 = Math.max(z1, z2);
+          }
+        }
+
+        /** Ray. CAN ONLY TEST WITH CubicHitbox (because, frankly, there's no need to test with itself)
+         *
+         * @class Ray
+         * @typedef {Ray}
+         */
+        class Ray {
+          /** Creates an instance of Ray. CAN ONLY TEST WITH CubicHitbox.
+           *
+           * @param {Number} x
+           * @param {Number} y
+           * @param {Number} z
+           * @param {Number} yaw
+           * @param {Number} pitch
+           */
+          constructor(x, y, z, yaw, pitch) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            // Forward vector
+            this.fx = -Math.sin(yaw) * Math.cos(pitch);
+            this.fy = Math.sin(pitch);
+            this.fz = -Math.cos(yaw) * Math.cos(pitch);
+          }
+
+          /** Tests collisions with a cubic hitbox.
+           *
+           * @param {CubicHitbox} cubic
+           * @returns {Object}
+           */
+          collide(cubic) {
+            // Credits to ChatGPT for suggesting slab intersection method.
+            // xyzyyxx wrote the code himself though.
+            var ignoreX, ignoreY, ignoreZ;
+
+            // X slab
+            if (this.fx == 0) {
+              if (this.x >= cubic.x1 && this.x <= cubic.x2) ignoreX = true;
+              else return { t: Infinity };
+            }
+            var xt1 = (cubic.x1 - this.x) / this.fx;
+            var xt2 = (cubic.x2 - this.x) / this.fx;
+
+            // Y slab
+            if (this.fy == 0) {
+              if (this.y >= cubic.y1 && this.y <= cubic.y2) ignoreY = true;
+              else return { t: Infinity };
+            }
+            var yt1 = (cubic.y1 - this.y) / this.fy;
+            var yt2 = (cubic.y2 - this.y) / this.fy;
+
+            // Z slab
+            if (this.fz == 0) {
+              if (this.z >= cubic.z1 && this.z <= cubic.z2) ignoreZ = true;
+              else return { t: Infinity };
+            }
+            var zt1 = (cubic.z1 - this.z) / this.fz;
+            var zt2 = (cubic.z2 - this.z) / this.fz;
+
+            // Enter and exit time
+            var enterT = Math.max(
+              ignoreX ? -Infinity : Math.min(xt1, xt2),
+              ignoreY ? -Infinity : Math.min(yt1, yt2),
+              ignoreZ ? -Infinity : Math.min(zt1, zt2),
+            );
+            var exitT = Math.min(
+              ignoreX ? +Infinity : Math.max(xt1, xt2),
+              ignoreY ? +Infinity : Math.max(yt1, yt2),
+              ignoreZ ? +Infinity : Math.max(zt1, zt2),
+            );
+
+            if (enterT > exitT || exitT < 0) {
+              return { t: Infinity };
+            } else {
+              var t = Math.max(enterT, 0);
+              var x = this.x + this.fx * t;
+              var y = this.y + this.fy * t;
+              var z = this.z + this.fz * t;
+              return { t, x, y, z };
+            }
+          }
+
+          /** Collision test with multiple entities.
+           *
+           * @param {Array} entities
+           * @returns {Object}
+           */
+          collideEntities(entities) {
+            // If there are no entities, then it returns a null result
+            // Otherwise, it takes each entity, maps it to { entity: entity, data: collision data with ray },
+            // then uses .reduce to find the closest collision.
+            return entities.length == 0
+              ? { entity: null, data: { t: Infinity } }
+              : entities
+                  .map((entity) => ({
+                    entity: entity,
+                    data: this.collide(entity.hbox),
+                  }))
+                  .reduce((best, cur) =>
+                    cur.data.t < best.data.t ? cur : best,
+                  );
+          }
+        }
+
+        /** Cone. CAN ONLY TEST WITH CubicHitbox (because, frankly, there's no need to test with itself)
+         *
+         * @class Cone
+         * @typedef {Cone}
+         */
+        class Cone {
+          /** Creates an instance of Cone.
+           *
+           * @constructor
+           * @param {Number} x
+           * @param {Number} y
+           * @param {Number} z
+           * @param {Number} yaw
+           * @param {Number} pitch
+           * @param {Number} sweepAngle
+           */
+          constructor(x, y, z, yaw, pitch, sweepAngle) {
+            this.p = glMatrix.vec3.fromValues(x, y, z);
+            var deg = 180 / Math.PI;
+
+            // forward
+            this.f = glMatrix.vec3.fromValues(
+              -Math.sin(yaw) * Math.cos(pitch),
+              Math.sin(pitch),
+              -Math.cos(yaw) * Math.cos(pitch),
+            );
+            this.sweepAngle = sweepAngle;
+          }
+
+          /** Collision test with cubic hitbox.
+           *
+           * @param {CubicHitbox} cubic
+           * @returns {Object}
+           */
+          collide(cubic) {
+            // tests with center
+            var vec = glMatrix.vec3.fromValues(
+              (cubic.x1 + cubic.x2) / 2,
+              (cubic.y1 + cubic.y2) / 2,
+              (cubic.z1 + cubic.z2) / 2,
+            );
+            glMatrix.vec3.subtract(vec, vec, this.p);
+            var ang = glMatrix.vec3.angle(vec, this.f);
+            if (ang <= this.sweepAngle) {
+              return { dist: glMatrix.vec3.length(vec) };
+            } else {
+              return { dist: Infinity };
+            }
+          }
+
+          /** Collision test with multiple entities.
+           *
+           * @param {Array} entities
+           * @returns {Array}
+           */
+          collideEntities(entities) {
+            return entities.map((entity) => ({
+              entity: entity,
+              data: this.collide(entity.hbox),
+            }));
+            //.filter(entry => entry.data.dist != Infinity)
+          }
+        }
+
+        // UNUSED.
+        /** Sweep. CAN ONLY TEST WITH CubicHitbox (because, frankly, there's no need to test with itself)
+         *
+         * @class Sweep
+         * @typedef {Sweep}
+         */
+        // AI helped me write this code, but it did not generate the code.
+        class Sweep {
+          /** Creates an instance of Sweep.
+           *
+           * @constructor
+           * @param {Number} x
+           * @param {Number} y
+           * @param {Number} z
+           * @param {Number} yaw
+           * @param {Number} pitch
+           * @param {Number} sweepAngle
+           */
+          constructor(x, y, z, yaw, pitch, sweepAngle) {
+            this.p = glMatrix.vec3.fromValues(x, y, z);
+            var deg = 180 / Math.PI;
+
+            // normal
+            var q = glMatrix.quat.fromEuler(
+              glMatrix.quat.create(),
+              pitch * deg + 90,
+              yaw * deg,
+              0,
+            );
+            this.n = glMatrix.vec3.fromValues(1, 0, 0);
+            this.n = glMatrix.vec3.transformQuat(this.n, this.n, q);
+
+            // forward
+            glMatrix.quat.fromEuler(q, pitch * deg, yaw * deg, 0);
+            this.f = glMatrix.vec3.fromValues(1, 0, 0);
+            this.f = glMatrix.vec3.transformQuat(this.f, this.f, q);
+
+            this.sweepAngle = sweepAngle;
+          }
+
+          planeIntersect(auxn, r) {
+            // auxn dot x = r
+            // n dot x = n dot p
+
+            // the line's vector can be found using cross product
+            var linev = glMatrix.vec3.cross(
+              glMatrix.vec3.create(),
+              this.n,
+              auxn,
+            );
+
+            // edge case: parallel planes
+            if (glMatrix.vec3.length(linev) < 1e-9) {
+              return { type: "parallel" };
+            }
+
+            // otherwise find a point they share
+            // we will solve the equations
+            // auxn dot x = r
+            // n dot x = n dot p
+            // (n cross auxn) dot x = 0
+            // ok i'll outsource all the heavy lifting to glMatrix.mat3 lol
+            var mat = glMatrix.mat3.fromValues(...auxn, ...this.n, ...linev);
+            // transpose mat because it is the wrong way
+            glMatrix.transpose(mat, mat);
+            // invert mat
+            glMatrix.invert(mat, mat);
+            // now apply it to the vector <r, n dot p, 0>
+            var pointOnLine = glMatrix.vec3.fromValues(
+              r,
+              glMatrix.vec3.dot(this.n, this.p),
+              0,
+            );
+            glMatrix.vec3.transformMat3(pointOnLine, pointOnLine, mat);
+
+            return {
+              type: "line",
+              vec: linev,
+              point: pointOnLine,
+            };
+          }
+
+          rayCollision2D(px, py, vx, vy, x1, y1, x2, y2) {
+            var ignoreX, ignoreY;
+
+            // X slab
+            if (vx == 0) {
+              if (px >= x1 && px <= cubic.x2) ignoreX = true;
+              else return { t: Infinity };
+            }
+            var xt1 = (x1 - px) / vx;
+            var xt2 = (x2 - px) / vx;
+
+            // Y slab
+            if (vy == 0) {
+              if (py >= y1 && py <= y2) ignoreY = true;
+              else return { t: Infinity };
+            }
+            var yt1 = (y1 - py) / vy;
+            var yt2 = (y2 - py) / vy;
+
+            // Enter and exit time
+            var enterT = Math.max(
+              ignoreX ? -Infinity : Math.min(xt1, xt2),
+              ignoreY ? -Infinity : Math.min(yt1, yt2),
+            );
+            var exitT = Math.min(
+              ignoreX ? +Infinity : Math.max(xt1, xt2),
+              ignoreY ? +Infinity : Math.max(yt1, yt2),
+            );
+
+            if (enterT > exitT) {
+              return null;
+            } else {
+              var enterX = px + vx * enterX;
+              var enterY = py + vy * enterY;
+              var exitX = px + vx * exitX;
+              var exitY = py + vy * exitY;
+              return { enterT, enterX, enterY, exitT, exitX, exitY };
+            }
+          }
+
+          collide(cubic) {
+            var buffer = glMatrix.vec3.create();
+            // check all 6 sides
+            glMatrix.vec3.set(buffer, 1, 0, 0);
+            var test1 = this.planeIntersect(buffer, cubic.x1); // yz, -x side
+            var test2 = this.planeIntersect(buffer, cubic.x2); // yz, +x side
+            glMatrix.vec3.set(buffer, 0, 1, 0);
+            var test3 = this.planeIntersect(buffer, cubic.y1); // xz, -y side
+            var test4 = this.planeIntersect(buffer, cubic.y2); // xz, +y side
+            glMatrix.vec3.set(buffer, 0, 0, 1);
+            var test5 = this.planeIntersect(buffer, cubic.z1); // xy, -z side
+            var test6 = this.planeIntersect(buffer, cubic.z2); // xy, +z side
+          }
+        }
+
+        return [CubicHitbox, Ray, Cone, Sweep];
+      })();
+    </script>
+    <script type>
+      // Held item
+      var held = new RenderComponent("items/sword");
+
+      /**
+       * A lot of the inventory code was borrowed from xyzyyxx's other project,
+       * mainly because he did not want to write it again.
+       * https://www.khanacademy.org/cs/i/5482258067734528
+       * Stacking items is new though.
+       */
+
+      // TODO: put comments on functions everywhere
+      // TODO: make models work
+
+      var { Inventory, ItemInstance, ItemPrototype } = (function () {
+        var STACK_LIMIT = 64;
+        var NUM_COLS = 9;
+        var NUM_ROWS = 4; // hotbar + inventory
+        var SLOT_SIZE = 50;
+        var RAISE = 10;
+        var IMG_PADDING = 5;
+        var PADDING = 20;
+
+        /** Item prototype, basically a type of item (eg golden apple, dagger, etc)
+         *
+         * @class ItemPrototype
+         * @typedef {ItemPrototype}
+         */
+        class ItemPrototype {
+          /** Constructs an ItemPrototype
+           * attributes: object containing info about the item
+           * useful attributes:
+           ** stackable: Boolean, tells whether the item can be stacked (up to STACK_LIMIT)
+           ** iconGetter: function, gets the texture in the hotbar
+           ** model: function, puts the model of the item in the right hand
+           ** use: when clicked with item, what does it do? requires param user, also returns boolean, telling if the item is consumed
+           *
+           * @constructor
+           * @param {String} name
+           * @param {Object} attributes
+           */
+          constructor(name, attributes) {
+            this.name = name;
+            this.attributes = attributes;
+          }
+        }
+        /** Item instance, basically an instance of a type of item
+         *
+         * @class ItemPrototype
+         * @typedef {ItemPrototype}
+         */
+        class ItemInstance {
+          /** Constructs an ItemInstance
+           *
+           * @constructor
+           * @param {ItemPrototype} prototype
+           */
+          constructor(prototype) {
+            this.proto = prototype;
+            this.name = prototype.name;
+            this.attributes = prototype.attributes; // Per-prototype attributes
+            this.data = Object.create(null); // Per-instance data
+          }
+
+          /** Gets icon.
+           *
+           */
+          get icon() {
+            return this.attributes.iconGetter.call(this);
+          }
+
+          /** Puts the held item in the correct position.
+           *
+           */
+          model() {
+            this.attributes.model.call(this);
+          }
+
+          /** Uses item. Returns boolean, telling if the item is consumed.
+           *
+           * @returns {Boolean}
+           */
+          use(user) {
+            return this.attributes.use.call(this, user);
+          }
+        }
+
+        /** Slot in the inventory.
+         *
+         * @class Slot
+         * @typedef {Slot}
+         */
+        class Slot {
+          /** Constructs slot.
+           *
+           * @constructor
+           * @param {Number} x1
+           * @param {Number} y1
+           * @param {Number} x2
+           * @param {Number} y2
+           */
+          constructor(x1, y1, x2, y2) {
+            this.x1 = x1;
+            this.y1 = y1;
+            this.x2 = x2;
+            this.y2 = y2;
+            this.content = null;
+            this.amount = 0;
+          }
+
+          /** Tells whether the pointer is hovering the slot.
+           *
+           * @returns {Boolean}
+           */
+          isHovered() {
+            return (
+              mouseX > this.x1 &&
+              mouseY > this.y1 &&
+              mouseX < this.x2 &&
+              mouseY < this.y2
+            );
+          }
+        }
+
+        /** Inventory, contains all items.
+         *
+         * @class Inventory
+         * @typedef {Inventory}
+         */
+        class Inventory {
+          /** Constructor
+           *
+           * @constructor
+           */
+          constructor() {
+            this.selected = 0; // Selected slot in hotbar
+            this.slots = [[]]; // First row is hotbar. Next three are the inventory.
+            this.opened = false;
+            this.itemDraggedContent = null; // When dragging an item, these two variables
+            this.itemDraggedAmount = 0; // say what is being dragged.
+
+            // Initial x, y to begin drawing hotbar and inventory
+            var ix = (overlay.width - NUM_COLS * SLOT_SIZE) / 2;
+            var iyHotbar = overlay.height - RAISE - SLOT_SIZE;
+            var iyInventory = (overlay.height - (NUM_ROWS - 1) * SLOT_SIZE) / 2;
+
+            // Hotbar
+            for (var column = 0; column < NUM_COLS; column++) {
+              var rectX = ix + SLOT_SIZE * column;
+              var rectY = iyHotbar;
+              this.slots[0].push(
+                new Slot(rectX, rectY, rectX + SLOT_SIZE, rectY + SLOT_SIZE),
+              );
+            }
+
+            // Inventory
+            for (var row = 1; row < NUM_ROWS; row++) {
+              this.slots.push([]);
+              for (var column = 0; column < NUM_COLS; column++) {
+                var rectX = ix + SLOT_SIZE * column;
+                // row - 1 because row starts at 1
+                var rectY = iyInventory + SLOT_SIZE * (row - 1);
+                this.slots[row].push(
+                  new Slot(rectX, rectY, rectX + SLOT_SIZE, rectY + SLOT_SIZE),
+                );
+              }
+            }
+
+            // Tells where to display the inventory.
+            this.ix = ix;
+            this.iyHotbar = iyHotbar;
+            this.iyInventory = iyInventory;
+          }
+
+          /** Get hovered slot
+           *
+           * @returns {Object?}
+           */
+          getHoveredSlot() {
+            // Go through all slots
+            for (var rowI in this.slots) {
+              for (var columnI in this.slots[rowI]) {
+                var slot = this.slots[rowI][columnI];
+                // If hovered, return
+                if (slot.isHovered()) {
+                  return slot;
+                }
+              }
+            }
+            // Else return nothing
+            return null;
+          }
+
+          /** Display item
+           *
+           * @param {HTMLImageElement} icon
+           * @param {Number} amount
+           * @param {Number} x
+           * @param {Number} y
+           */
+          displayItem(icon, amount, x, y) {
+            // Draws the image
+            ctx2D.drawImage(
+              icon,
+              x + IMG_PADDING,
+              y + IMG_PADDING,
+              SLOT_SIZE - 2 * IMG_PADDING,
+              SLOT_SIZE - 2 * IMG_PADDING,
+            );
+            // Draws text if more than 1 item
+            if (amount != 1) {
+              ctx2D.fillStyle = "#ffffff";
+              ctx2D.textAlign = "center";
+              ctx2D.textBaseline = "middle";
+              ctx2D.font = "20px Arial";
+              ctx2D.fillText(
+                amount,
+                x + SLOT_SIZE - IMG_PADDING * 2,
+                y + SLOT_SIZE - IMG_PADDING * 2,
+              );
+            }
+          }
+
+          /** Display and update
+           *
+           */
+          dispUpd() {
+            // Initial formatting
+            ctx2D.strokeStyle = "#acacac";
+            ctx2D.lineWidth = 4;
+            ctx2D.fillStyle = "#0000007f";
+            ctx2D.imageSmoothingEnabled = false;
+
+            // Draw hotbar
+            for (var slot of this.slots[0]) {
+              ctx2D.beginPath();
+              ctx2D.rect(slot.x1, slot.y1, SLOT_SIZE, SLOT_SIZE);
+              ctx2D.fill();
+              ctx2D.stroke();
+            }
+
+            // Select the selected item
+            ctx2D.strokeStyle = "#e1e1e1";
+            ctx2D.lineWidth = 6;
+            var seldSlot = this.slots[0][this.selected];
+            ctx2D.beginPath();
+            ctx2D.rect(seldSlot.x1, seldSlot.y1, SLOT_SIZE, SLOT_SIZE);
+            ctx2D.stroke();
+
+            for (var slot of this.slots[0]) {
+              // If there is an item
+              if (slot.content) {
+                this.displayItem(
+                  slot.content.icon,
+                  slot.amount,
+                  slot.x1,
+                  slot.y1,
+                );
+              }
+            }
+
+            // Draw rest of inventory (if opened)
+            // Also move stuff around if opened
+            if (this.opened) {
+              // Initial x, y to draw inventory
+              var ix = this.ix;
+              var iyInventory = this.iyInventory;
+              // Draw background thing
+              var txtSz = 20;
+              ctx2D.fillStyle = "#e1e1e1";
+              ctx2D.strokeStyle = "#acacac";
+              ctx2D.lineWidth = 4;
+              ctx2D.beginPath();
+              ctx2D.roundRect(
+                ix - PADDING,
+                iyInventory - 2 * PADDING - txtSz,
+                NUM_COLS * SLOT_SIZE + PADDING * 2,
+                (NUM_ROWS - 1) * SLOT_SIZE + 3 * PADDING + txtSz,
+                PADDING,
+              );
+              ctx2D.fill();
+              ctx2D.stroke();
+              ctx2D.font = `${txtSz}px Arial`;
+              ctx2D.textAlign = "left";
+              ctx2D.textBaseline = "alphabetic";
+              ctx2D.fillStyle = "#000000";
+              ctx2D.fillText("Inventory", ix, iyInventory - PADDING);
+
+              // Draw inventory
+              for (var rowI = 1; rowI < NUM_ROWS; rowI++) {
+                for (var slot of this.slots[rowI]) {
+                  ctx2D.fillStyle = "#7f7f7f";
+                  ctx2D.beginPath();
+                  ctx2D.rect(slot.x1, slot.y1, SLOT_SIZE, SLOT_SIZE);
+                  ctx2D.fill();
+                  ctx2D.stroke();
+                  // If there is an item
+                  if (slot.content) {
+                    // Display it
+                    this.displayItem(
+                      slot.content.icon,
+                      slot.amount,
+                      slot.x1,
+                      slot.y1,
+                    );
+                  }
+                }
+              }
+
+              // Display item if being dragged
+              if (this.itemDraggedContent) {
+                this.displayItem(
+                  this.itemDraggedContent.icon,
+                  this.itemDraggedAmount,
+                  mouseX - SLOT_SIZE / 2 + IMG_PADDING,
+                  mouseY - SLOT_SIZE / 2 + IMG_PADDING,
+                );
+              }
+
+              // Get hovered slot
+              var hoveredSlot = this.getHoveredSlot();
+
+              if (hoveredSlot) {
+                // Left click
+                if (events.MouseLeft && !eventsPrev.MouseLeft) {
+                  var { content, amount } = hoveredSlot;
+                  // If the item is stackable and they are the same type
+                  if (
+                    content?.proto == this.itemDraggedContent?.proto &&
+                    content?.attributes?.stackable
+                  ) {
+                    // Stack 'em onto each other (until the stack limit)
+                    var sumAmount = hoveredSlot.amount + this.itemDraggedAmount;
+                    if (sumAmount > STACK_LIMIT) {
+                      hoveredSlot.amount = STACK_LIMIT;
+                      this.itemDraggedAmount = sumAmount - STACK_LIMIT;
+                    } else {
+                      hoveredSlot.amount = sumAmount;
+                      this.itemDraggedContent = null;
+                      this.itemDraggedAmount = 0;
+                    }
+                  } else {
+                    // Otherwise just swap them
+                    hoveredSlot.content = this.itemDraggedContent;
+                    hoveredSlot.amount = this.itemDraggedAmount;
+                    this.itemDraggedContent = content;
+                    this.itemDraggedAmount = amount;
+                  }
+                }
+                // Right click
+                if (events.MouseRight && !eventsPrev.MouseRight) {
+                  var { content, amount } = hoveredSlot;
+                  // If the items are stackable, drop them in
+                  if (
+                    (content?.proto == this.itemDraggedContent?.proto &&
+                      content?.attributes?.stackable) ||
+                    content == null
+                  ) {
+                    if (hoveredSlot.amount < STACK_LIMIT) {
+                      hoveredSlot.amount++;
+                      hoveredSlot.content = this.itemDraggedContent;
+                      this.itemDraggedAmount--;
+                      if (this.itemDraggedAmount == 0) {
+                        this.itemDraggedContent = null;
+                      }
+                    }
+                  } else {
+                    // Just swap them otherwise
+                    hoveredSlot.content = this.itemDraggedContent;
+                    hoveredSlot.amount = this.itemDraggedAmount;
+                    this.itemDraggedContent = content;
+                    this.itemDraggedAmount = amount;
+                  }
+                }
+              }
+            }
+          }
+
+          /** Toggle opened
+           *
+           */
+          toggleOpened() {
+            this.opened = !this.opened;
+            togglePointer();
+          }
+        }
+
+        return { Inventory, ItemInstance, ItemPrototype };
+      })();
+    </script>
+    <script type>
+      var [
+        createContext,
+        texture1,
+        texture2,
+        positionHeld,
+        p_sword,
+        p_dagger,
+        p_apple,
+      ] = (function () {
+        function createContext(width, height) {
+          var texture = document.createElement("canvas");
+          texture.width = width;
+          texture.height = height;
+          var context = texture.getContext("2d");
+          return context;
+        }
+
+        var texture1 = createContext(16, 16);
+        texture1.fillStyle = "#ff0000";
+        texture1.fillRect(0, 0, 8, 8);
+
+        var texture2 = createContext(16, 16);
+        texture2.fillStyle = "#0000ff";
+        texture2.fillRect(0, 0, 8, 8);
+
+        function positionHeld(up, forward, rot, yaw, pitch, roll) {
+          // ChatGPT helped me understand how to implement the quaternion math
+          var forwardVec = renderer.scene.camera.transform.getForward();
+          var rightVec = renderer.scene.camera.transform.getRight();
+          var upVec = renderer.scene.camera.transform.getUp();
+          var buffer = glMatrix.vec3.create();
+          var translationVec = glMatrix.vec3.create();
+          glMatrix.vec3.scale(buffer, upVec, up);
+          glMatrix.vec3.scale(translationVec, forwardVec, forward);
+          glMatrix.vec3.add(translationVec, buffer, translationVec); // set forwardVec to forwardVec - upVec * 0.9
+
+          var playerTranslation = renderer.scene.camera.transform.translation;
+
+          var rotor = glMatrix.quat.create();
+          glMatrix.quat.setAxisAngle(rotor, upVec, rot);
+          glMatrix.vec3.transformQuat(translationVec, translationVec, rotor);
+          held.transform.setTranslation(
+            playerTranslation[0] + translationVec[0] * 0.7,
+            playerTranslation[1] + translationVec[1] * 0.7,
+            playerTranslation[2] + translationVec[2] * 0.7,
+          );
+          var playerRotation = glMatrix.quat.clone(
+            renderer.scene.camera.transform.rotation,
+          );
+          var yawRotor = glMatrix.quat.create();
+          var pitchRotor = glMatrix.quat.create();
+          var rollRotor = glMatrix.quat.create();
+          glMatrix.quat.setAxisAngle(rollRotor, forwardVec, roll);
+          glMatrix.quat.setAxisAngle(pitchRotor, rightVec, pitch);
+          glMatrix.quat.setAxisAngle(yawRotor, upVec, yaw);
+          glMatrix.quat.multiply(playerRotation, rollRotor, playerRotation);
+          glMatrix.quat.multiply(playerRotation, pitchRotor, playerRotation);
+          glMatrix.quat.multiply(playerRotation, yawRotor, playerRotation);
+          held.transform.setRotationQuaternion(playerRotation);
+        }
+
+        var p_sword = new ItemPrototype("Sword", {
+          stackable: false,
+          iconGetter: function () {
+            return texture1.canvas;
+          },
+          model: function () {
+            held.mesh = "items/sword";
+            held.transform.setScale(0.5, 0.5, 0.5);
+            var attackThing =
+              1 -
+              Math.min(
+                Math.pow(
+                  (Date.now() - (this.data.lastUse ?? -Infinity)) / 250,
+                  0.5,
+                ),
+                1,
+              );
+            positionHeld(
+              -0.9,
+              1,
+              (attackThing * 1.25 - 1) * Math.PI * 0.3,
+              attackThing * 2,
+              -attackThing / 5,
+              attackThing,
+            );
+          },
+          use: function (user) {
+            if (Date.now() - this.data.lastUse >= 250) {
+              this.data.lastUse = Date.now();
+              var cone = new Cone(
+                user.x + user.constructor.width / 2,
+                user.y + user.constructor.height - 0.3,
+                user.z + user.constructor.width / 2,
+                user.yaw,
+                user.pitch,
+                Math.PI / 4,
+              );
+              var intersect = cone.collideEntities(
+                [...plat.entities, plat.player].filter((e) => e != user),
+              );
+              for (var entry of intersect) {
+                if (
+                  (entry.entity instanceof NPC ||
+                    entry.entity instanceof Player) &&
+                  entry.data?.dist < 4
+                ) {
+                  entry.entity.indirectDamage({ strength: 10, from: user });
+                }
+              }
+            } else {
+              this.data.lastUse = Date.now();
+            }
+          },
+        });
+
+        var p_dagger = new ItemPrototype("Dagger", {
+          stackable: false,
+          iconGetter: function () {
+            return texture2.canvas;
+          },
+          model: function () {
+            held.mesh = "items/dagger";
+            held.transform.setScale(0.5, 0.5, 0.5);
+            var attackThing =
+              1 -
+              Math.min(
+                Math.pow(
+                  (Date.now() - (this.data.lastUse ?? -Infinity)) / 500,
+                  0.5,
+                ),
+                1,
+              );
+            positionHeld(
+              -0.7,
+              attackThing + 1,
+              -Math.PI * 0.3 + attackThing * 0.5,
+              0,
+              (Math.PI / 2) * (1 - attackThing),
+              0,
+            );
+          },
+          use: function (user) {
+            if (Date.now() - this.data.lastUse >= 500) {
+              this.data.lastUse = Date.now();
+              var ray = new Ray(
+                user.x + user.constructor.width / 2,
+                user.y + user.constructor.height - 0.3,
+                user.z + user.constructor.width / 2,
+                user.yaw,
+                user.pitch,
+              );
+              var intersect = ray.collideEntities(
+                [...plat.blocks, ...plat.entities, plat.player].filter(
+                  (e) => e != user,
+                ),
+              );
+              if (
+                (intersect.entity instanceof NPC ||
+                  intersect.entity instanceof Player) &&
+                intersect.data?.t < 4
+              ) {
+                intersect.entity.indirectDamage({ strength: 25, from: user });
+              }
+            } else {
+              this.data.lastUse = Date.now();
+            }
+          },
+        });
+
+        var p_apple = new ItemPrototype("Apple", {
+          stackable: true,
+          iconGetter: function () {
+            return texture2.canvas;
+          },
+          model: function () {
+            held.mesh = "items/red-apple";
+            held.transform.setScale(0.5, 0.5, 0.5);
+            positionHeld(-0.7, 1, -Math.PI * 0.3, 0, Math.PI / 2, 0);
+          },
+          use: function (user) {
+            user.health += 15;
+            user.health = Math.min(user.health, user.maxHealth);
+            return true;
+          },
+        });
+
+        return [
+          createContext,
+          texture1,
+          texture2,
+          positionHeld,
+          p_sword,
+          p_dagger,
+          p_apple,
+        ];
+      })();
+    </script>
+    <script type>
+      var { Block, Entity, NPC, Player, Platformer } = (function () {
+        // Constants
+        var HACC = 50; // PLEASE ADJUST AS NECESSARY, I HAVE NOT PLAYTESTED THESE CONSTANTS MAINLY
+        var JUMP = 10; // BECAUSE I HAVE NO IDEA HOW TO ADD A BLOCK TO THE SCENE.
+        var GRAV = -30;
+        var SENS = Math.PI / 250; // mouse sensitivity
+        var FRIC = 0.00001;
+
+        /** Block, for use in the platforming engine
+         *
+         * @class Block
+         * @typedef {Block}
+         */
+        class Block {
+          /** Creates an instance of Block.
+           *
+           * @constructor
+           * @param {Number} x
+           * @param {Number} y
+           * @param {Number} z
+           */
+          constructor(x, y, z, w, h, l) {
+            // Initiates x, y, z, and texture, creates hitbox
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.hbox = new CubicHitbox(x, y, z, x + w, y + h, z + l);
+          }
+
+          /** Creates an instance of Block from a scene graph node.
+           *
+           * @param {Number} w
+           * @param {Number} h
+           * @param {Number} l
+           * @param {Object} node
+           * @returns {Block}
+           */
+          static fromNode(w, h, l, node) {
+            // This moves a vector to where the block is, and then puts the block there
+            var vec = glMatrix.vec3.create();
+            glMatrix.vec4.transformMat4(vec, vec, node.worldMatrix); // vec = node.worldMatrix * vec
+            return new Block(
+              vec[0] - 0.5 * w,
+              vec[1] - 0.5 * h,
+              vec[2] - 0.5 * l,
+              w,
+              h,
+              l,
+            );
+          }
+        }
+
+        /** Entity
+         * @class Entity
+         * @typedef {Entity}
+         */
+        class Entity {
+          /** Creates an instance of Entity.
+           *
+           * @constructor
+           * @param {Number} x
+           * @param {Number} y
+           * @param {Number} z
+           */
+          constructor(x, y, z) {
+            // Initiates x, y, z, creates hitbox
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.hbox = new CubicHitbox(
+              x,
+              y,
+              z,
+              x + this.constructor.width,
+              y + this.constructor.height, // Switched height to y-axis, VERY IMPORTANT!
+              z + this.constructor.width,
+            );
+            // Creates x, y, z velocities
+            this.xv = 0;
+            this.yv = 0;
+            this.zv = 0;
+            // Yaw, pitch
+            this.yaw = 0;
+            this.pitch = 0;
+            // Health
+            this.maxHealth = 100;
+            this.health = this.maxHealth;
+            this.displayHealth = this.health; // For a smooth animation when damaging or regen-ing
+            // Inventory
+            this.inventory = new Inventory();
+
+            this.setDamageReciever(function (data) {
+              this.damage(data.strength);
+              // knockback
+              var dx = data.from.x - this.x;
+              var dy = data.from.y - this.y;
+              var dz = data.from.z - this.z;
+              var m = Math.sqrt(dx * dx + dy * dy + dz * dz);
+              this.xv += (-dx / m) * 30;
+              this.yv += JUMP / 2;
+              this.zv += (-dz / m) * 30;
+            });
+
+            this.lastPunch = -Infinity;
+          }
+
+          /** Resets hitbox.
+           *
+           */
+          resetHitbox() {
+            this.hbox.set(
+              this.x,
+              this.y,
+              this.z,
+              this.x + this.constructor.width,
+              this.y + this.constructor.height, // Y axis is up down, not forward back.
+              this.z + this.constructor.width,
+            );
+          }
+
+          /** Damages entity.
+           *
+           * @param {Number} by
+           */
+          damage(by) {
+            this.health -= by;
+            if (this.health < 0) {
+              this.health = 0;
+            }
+          }
+
+          /** Set damage reciever. f takes object as parameter, the object having properties strength, and attacker.
+           *
+           * @param {Function} f
+           */
+          setDamageReciever(f) {
+            this.damageReciever = f;
+          }
+
+          /** Calls damage reciever.
+           *
+           * @param {Object} obj
+           */
+          indirectDamage(obj) {
+            this.damageReciever.call(this, obj);
+          }
+
+          /** Takes an array, returns first object to collide with or null.
+           *
+           * @param {Array} arr
+           * @returns {*}
+           */
+          touchingArray(arr) {
+            for (var obj of arr) {
+              if (this.hbox.collide(obj.hbox)) {
+                return obj;
+              }
+            }
+            return null;
+          }
+
+          /** Steps entity. The events is the entity's own internal controls.
+           *
+           * @param {Platformer} plat
+           * @param {Object} events
+           */
+          step(plat, events, eventsPrev) {
+            // Manage x and z velocities.
+            this.xv *= Math.pow(FRIC, delta);
+            this.zv *= Math.pow(FRIC, delta);
+
+            // Switched these around until they worked, needed to add negation signs to forward and backwards.
+            if (this.health > 0 && !this.inventory.opened) {
+              if (events.KeyD) {
+                this.xv += HACC * Math.cos(this.yaw) * delta;
+                this.zv -= HACC * Math.sin(this.yaw) * delta;
+              }
+              if (events.KeyS) {
+                this.xv += HACC * Math.sin(this.yaw) * delta;
+                this.zv += HACC * Math.cos(this.yaw) * delta;
+              }
+              if (events.KeyA) {
+                this.xv -= HACC * Math.cos(this.yaw) * delta;
+                this.zv += HACC * Math.sin(this.yaw) * delta;
+              }
+              if (events.KeyW) {
+                this.xv -= HACC * Math.sin(this.yaw) * delta;
+                this.zv -= HACC * Math.cos(this.yaw) * delta;
+              }
+            }
+            // Handle each axis separately
+            this.x += this.xv * delta;
+            this.resetHitbox();
+            if (this.touchingArray(plat.blocks)) {
+              // Undo movement if colliding into a block
+              this.x -= this.xv * delta;
+              this.xv = 0;
+              this.resetHitbox();
+            }
+            // Z axis
+            this.z += this.zv * delta;
+            this.resetHitbox();
+            if (this.touchingArray(plat.blocks)) {
+              this.z -= this.zv * delta;
+              this.zv = 0;
+              this.resetHitbox();
+            }
+
+            // Y movement
+            this.yv += GRAV * delta;
+            this.y += this.yv * delta;
+            this.resetHitbox();
+            if (this.touchingArray(plat.blocks)) {
+              this.y -= this.yv * delta;
+              // Fall damage
+              if (this.yv < -1.5 * JUMP) {
+                this.damage(Math.pow(-this.yv / JUMP, 3) * 2);
+              }
+              // Only allow jumps if falling
+              if (
+                this.health > 0 &&
+                events.Space &&
+                this.yv < 0 &&
+                !this.inventory.opened
+              ) {
+                this.yv = JUMP;
+              } else {
+                this.yv = 0;
+              }
+              this.resetHitbox();
+            }
+
+            // Angling
+            if (this.health > 0 && !this.inventory.opened) {
+              this.yaw -= events.dx * SENS;
+              this.pitch -= events.dy * SENS;
+              this.pitch = clamp(this.pitch, -Math.PI / 2, Math.PI / 2);
+            }
+
+            // Inventory
+            if (events.KeyE && !eventsPrev.KeyE) {
+              this.inventory.toggleOpened();
+            }
+
+            // Digits (to change inventory slot)
+            for (
+              var i = 1;
+              i <= 9 && i <= this.inventory.slots[0].length;
+              i++
+            ) {
+              if (events[`Digit${i}`]) {
+                this.inventory.selected = i - 1;
+              }
+            }
+
+            // Inventory item usage
+            if (events.MouseLeft && !eventsPrev.MouseLeft) {
+              var slot = this.inventory.slots[0][this.inventory.selected];
+              if (slot.content?.use) {
+                var consumed = slot.content.use(this);
+                if (consumed) {
+                  slot.amount--;
+                  if (slot.amount == 0) {
+                    slot.content = null;
+                  }
+                }
+              } else {
+                // punch
+                if (Date.now() - this.lastPunch >= 500) {
+                  this.lastPunch = Date.now();
+                  var ray = new Ray(
+                    this.x + this.constructor.width / 2,
+                    this.y + this.constructor.height - 0.3,
+                    this.z + this.constructor.width / 2,
+                    this.yaw,
+                    this.pitch,
+                  );
+                  var intersect = ray.collideEntities(
+                    [...plat.blocks, ...plat.entities, plat.player].filter(
+                      (e) => e != this,
+                    ),
+                  );
+                  if (
+                    (intersect.entity instanceof NPC ||
+                      intersect.entity instanceof Player) &&
+                    intersect.data?.t < 4
+                  ) {
+                    intersect.entity.indirectDamage({
+                      strength: 5,
+                      from: this,
+                    });
+                  }
+                } else {
+                  this.lastPunch = Date.now();
+                }
+              }
+            }
+          }
+        }
+
+        /** Non-player character, for use in the platforming engine
+         *
+         * @class NPC
+         * @typedef {NPC}
+         */
+        class NPC extends Entity {
+          static width = 0.7;
+          static height = 0.7;
+
+          /** Creates an instance of NPC.
+           *
+           * @constructor
+           * @param {Number} x
+           * @param {Number} y
+           * @param {Number} z
+           */
+          constructor(x, y, z, renderComponent) {
+            super(x, y, z);
+            this.renderComponent = renderComponent;
+            this.lastDamaged = 0;
+            this.ai = function (plat) {
+              return { dx: 0, dy: 0 };
+            };
+            this.events = { dx: 0, dy: 0 };
+            this.eventsPrev = { dx: 0, dy: 0 };
+            this.setDamageReciever(function (data) {
+              if (data.from instanceof Player) {
+                this.damage(data.strength);
+                this.renderComponent.mesh = "items/rat-damaged";
+                this.lastDamaged = Date.now();
+              }
+
+              // knockback
+              var dx = data.from.x - this.x;
+              var dy = data.from.y - this.y;
+              var dz = data.from.z - this.z;
+              var m = Math.sqrt(dx * dx + dy * dy + dz * dz);
+              this.xv += (-dx / m) * 30;
+              this.yv += JUMP / 2;
+              this.zv += (-dz / m) * 30;
+            });
+          }
+
+          /** Adds the NPC to the scene.
+           *
+           * @param {Scene} scene
+           */
+          addToScene(scene) {
+            scene.addComponent(this.renderComponent);
+          }
+
+          /** Updates render component.
+           *
+           */
+          updateRenderComponent() {
+            this.renderComponent.transform.setTranslation(
+              this.x + this.constructor.width / 2,
+              this.y + this.constructor.height / 2,
+              this.z + this.constructor.width / 2,
+            );
+            this.renderComponent.transform.setRotation(0, this.yaw, 0);
+            if (Date.now() - this.lastDamaged > 250) {
+              this.renderComponent.mesh = "items/rat";
+            }
+          }
+
+          /** Sets ai. Takes function (plat) { return events; }.
+           *
+           * @param {Function} ai
+           */
+          setAI(ai) {
+            this.ai = ai;
+          }
+        }
+
+        /** Player, for use in the platforming engine
+         *
+         * @class Player
+         * @typedef {Player}
+         */
+        class Player extends Entity {
+          static width = 0.7;
+          static height = 1.8;
+
+          /** Creates an instance of Player.
+           *
+           * @constructor
+           * @param {Number} x
+           * @param {Number} y
+           * @param {Number} z
+           */
+          constructor(x, y, z) {
+            super(x, y, z);
+          }
+
+          /** Orients camera.
+           *
+           * @param {Camera} camera
+           */
+          orient(camera) {
+            this.resetHitbox();
+            // Sets camera position
+            camera.transform.setTranslation(
+              this.hbox.x1 + this.constructor.width / 2,
+              this.hbox.y1 + this.constructor.height - 0.3, // Same change as in the constructor!
+              this.hbox.z1 + this.constructor.width / 2,
+            );
+            // Set rotation (0 at the end is roll, but we don't use roll)
+            camera.transform.setRotation(
+              (this.pitch * 180) / Math.PI,
+              (this.yaw * 180) / Math.PI,
+              0,
+              true,
+            );
+          }
+
+          /** Displays overlay on 2D context.
+           *
+           */
+          healthBar() {
+            // Draw health bar
+            ctx2D.fillStyle = "#ff5f5f";
+            ctx2D.fillRect(
+              30,
+              30,
+              (this.displayHealth / this.maxHealth) * 100,
+              20,
+            );
+            // Draw outline
+            ctx2D.strokeStyle = "#ffffff";
+            ctx2D.lineWidth = 3;
+            ctx2D.strokeRect(30, 30, 100, 20);
+            // Text number
+            ctx2D.fillStyle = "#ffffff";
+            ctx2D.font = "15px Arial";
+            ctx2D.textBaseline = "middle";
+            ctx2D.textAlign = "center";
+            ctx2D.fillText(Math.ceil(this.health), 80, 40);
+            // Update display health
+            this.displayHealth =
+              this.health + (this.displayHealth - this.health) * 0.9;
+          }
+        }
+
+        /** Platformer game class, handles platforming logic
+         *
+         * @class Platformer
+         * @typedef {Platformer}
+         */
+        class Platformer {
+          /** Creates an instance of Platformer.
+           *
+           * @param {Number} spawnX
+           * @param {Number} spawnY
+           * @param {Number} spawnZ
+           */
+          constructor(spawnX, spawnY, spawnZ) {
+            this.spawnX = spawnX;
+            this.spawnY = spawnY;
+            this.spawnZ = spawnZ;
+            this.player = new Player(spawnX, spawnY, spawnZ);
+            this.entities = [];
+            this.blocks = [];
+          }
+          /** Adds a block to the blocks.
+           *
+           * @param {Block} block
+           */
+          addBlock(block) {
+            this.blocks.push(block);
+          }
+          /** Steps the platformer forward in time.
+           *
+           */
+          step() {
+            this.player.step(this, events, eventsPrev);
+            for (var entity of this.entities) {
+              entity.events = entity.ai.call(entity, this);
+              entity.step(this, entity.events, entity.eventsPrev);
+              entity.updateRenderComponent();
+              entity.eventsPrev = Object.assign({}, entity.events);
+              if (entity.health <= 0) {
+                // Delete the entity's render component
+                var matching = renderer.scene.componentList.filter(
+                  (node) => node.renderComponent == entity.renderComponent,
+                );
+                if (matching.length) {
+                  renderer.scene.removeComponent(matching[0]);
+                }
+              }
+            }
+            this.entities = this.entities.filter((entity) => entity.health > 0);
+          }
+        }
+
+        return { Block, Entity, NPC, Player, Platformer };
+      })();
+    </script>
+    <script type>
+      var [generateDungeonMap, interpretBit, DUNGEON_WIDTH, DUNGEON_HEIGHT] =
+        (function () {
+          var WIDTH = 64;
+          var HEIGHT = 64;
+
+          var MIN_WIDTH = 8;
+          var MIN_HEIGHT = 8;
+          var MIN_SIZE = 8;
+          var MAX_SIZE = 16;
+
+          function generateBSP(x, z, w, h, c) {
+            if (w > MIN_WIDTH && h > MIN_HEIGHT) {
+              var xOrY = Math.floor(Math.random() * 2);
+              var ratio = Math.random() * (0.7 - 0.3) + 0.3;
+              if (xOrY === 0) {
+                var childW = Math.floor(w * ratio);
+                if (childW < MIN_WIDTH) {
+                  return {
+                    w: w,
+                    h: h,
+                    x: x,
+                    z: z,
+                    front: null,
+                    back: null,
+                  };
+                }
+                ////stroke(Math.random() * 127, Math.random() * 127, Math.random() * 127);
+                //line(x + childW, z, x + childW, z + h);
+                return {
+                  w: w,
+                  h: h,
+                  x: x,
+                  z: z,
+                  back: generateBSP(x, z, childW, h),
+                  front: generateBSP(x + childW, z, w - childW, h),
+                };
+              } else {
+                var childH = Math.floor(h * ratio);
+                if (childH < MIN_HEIGHT) {
+                  return {
+                    w: w,
+                    h: h,
+                    x: x,
+                    z: z,
+                    front: null,
+                    back: null,
+                  };
+                }
+                //stroke(Math.random() * 127, Math.random() * 127, Math.random() * 127);
+                //line(x, z + childH, x + w, z + childH);
+                return {
+                  w: w,
+                  h: h,
+                  x: x,
+                  z: z,
+                  back: generateBSP(x, z, w, childH),
+                  front: generateBSP(x, z + childH, w, h - childH),
+                };
+              }
+            }
+            return {
+              w: w,
+              h: h,
+              x: x,
+              z: z,
+              front: null,
+              back: null,
+            };
+          }
+          function generateRooms(bsp) {
+            if (bsp.front !== null && bsp.back !== null) {
+              return {
+                back: generateRooms(bsp.back),
+                front: generateRooms(bsp.front),
+              };
+            }
+            if (bsp.back === null && bsp.front === null) {
+              var w = Math.min(
+                Math.floor(Math.random() * (bsp.w - MIN_SIZE)) + MIN_SIZE,
+                MAX_SIZE,
+              );
+              var h = Math.min(
+                Math.floor(Math.random() * (bsp.h - MIN_SIZE)) + MIN_SIZE,
+                MAX_SIZE,
+              );
+              var x = bsp.x + Math.floor(Math.random() * (bsp.w - w - 1)) + 1;
+              var y = bsp.z + Math.floor(Math.random() * (bsp.h - h - 1)) + 1;
+              //noStroke();
+              //fill(0, 0, 0);
+              //rect(x, y, w, h);
+              return {
+                x: x,
+                y: y,
+                w: w,
+                h: h,
+              };
+            }
+          }
+          function rectangleOverlap(c1, s1, c2, s2) {
+            if (c1 > c2 + s2 || c1 + s1 < c2) {
+              return false;
+            } else {
+              return true;
+            }
+          }
+          function generateDungeon(rooms) {
+            if ("x" in rooms) {
+              return [
+                {
+                  x: rooms.x,
+                  y: rooms.y,
+                  w: rooms.w,
+                  h: rooms.h,
+                },
+              ];
+            } else {
+              var frontRooms = generateDungeon(rooms.front);
+              var backRooms = generateDungeon(rooms.back);
+
+              // x-axis overlap
+              var potentialMatches = [];
+              for (var i = 0; i < frontRooms.length; i++) {
+                for (var j = 0; j < backRooms.length; j++) {
+                  if (
+                    rectangleOverlap(
+                      frontRooms[i].x,
+                      frontRooms[i].w,
+                      backRooms[j].x,
+                      backRooms[j].w,
+                    )
+                  ) {
+                    potentialMatches.push([i, j, "x"]);
+                  }
+                  if (
+                    rectangleOverlap(
+                      frontRooms[i].y,
+                      frontRooms[i].h,
+                      backRooms[j].y,
+                      backRooms[j].h,
+                    )
+                  ) {
+                    potentialMatches.push([i, j, "y"]);
+                  }
+                }
+              }
+
+              if (potentialMatches.length === 0) {
+                for (var i = 0; i < frontRooms.length; i++) {
+                  for (var j = 0; j < backRooms.length; j++) {
+                    potentialMatches.push([i, j, "n/a"]);
+                  }
+                }
+              }
+
+              var bestMatch = [];
+              var bestLength = Infinity;
+              for (var i = 0; i < potentialMatches.length; i++) {
+                var x1 = frontRooms[potentialMatches[i][0]].x;
+                var y1 = frontRooms[potentialMatches[i][0]].y;
+                var x2 = backRooms[potentialMatches[i][1]].x;
+                var y2 = backRooms[potentialMatches[i][1]].y;
+                var distSq = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+                if (distSq < bestLength) {
+                  bestMatch = potentialMatches[i];
+                  bestLength = distSq;
+                }
+              }
+              var room1 = frontRooms[bestMatch[0]];
+              var room2 = backRooms[bestMatch[1]];
+              var x1 = frontRooms[bestMatch[0]].x;
+              var y1 = frontRooms[bestMatch[0]].y;
+              var x2 = backRooms[bestMatch[1]].x;
+              var y2 = backRooms[bestMatch[1]].y;
+              var w1 = frontRooms[bestMatch[0]].w;
+              var h1 = frontRooms[bestMatch[0]].h;
+              var w2 = backRooms[bestMatch[1]].w;
+              var h2 = backRooms[bestMatch[1]].h;
+
+              //stroke(255, 0, 0);
+              //line(x1, y1, x2, y2);
+              var x = 0;
+              var y = 0;
+              var w = 0;
+              var h = 0;
+
+              if (bestMatch[2] === "x") {
+                var range1 = [x1, x1 + w1];
+                var range2 = [x2, x2 + w2];
+
+                var start = Math.max(range1[0], range2[0]);
+                var end = Math.min(range1[1], range2[1]) - 4;
+
+                var corridorX = Math.floor(
+                  Math.random() * (end - start) + start,
+                );
+                var corridorY;
+                var corridorH;
+                if (y1 + h1 < y2) {
+                  // block 1 above block 2
+                  corridorY = y1 + h1;
+                  corridorH = y2 - (y1 + h1);
+                } else if (y2 + h2 < y1) {
+                  // block 2 above block 1
+                  corridorY = y2 + h2;
+                  corridorH = y1 - (y2 + h2);
+                }
+                //fill(0, 0, 255);
+                //noStroke();
+                //rect(corridorX, corridorY, 4, corridorH);
+                x = corridorX;
+                y = corridorY;
+                w = 4;
+                h = corridorH;
+              } else if (bestMatch[2] === "y") {
+                var range1 = [y1, y1 + h1];
+                var range2 = [y2, y2 + h2];
+
+                var start = Math.max(range1[0], range2[0]);
+                var end = Math.min(range1[1], range2[1]) - 4;
+
+                var corridorY = Math.floor(
+                  Math.random() * (end - start) + start,
+                );
+                var corridorX;
+                var corridorW;
+                if (x1 + w1 < x2) {
+                  // block 1 above block 2
+                  corridorX = x1 + w1;
+                  corridorW = x2 - (x1 + w1);
+                } else if (x2 + w2 < x1) {
+                  // block 2 above block 1
+                  corridorX = x2 + w2;
+                  corridorW = x1 - (x2 + w2);
+                }
+                //fill(0, 255, 0);
+                //noStroke();
+                //rect(corridorX, corridorY, corridorW, 4);
+                x = corridorX;
+                y = corridorY;
+                w = corridorW;
+                h = 4;
+              } else {
+                //fill(255, 0, 0); /* AI CODE */
+                var p1x = x1 + Math.floor(w1 / 2);
+                var p1y = y1 + Math.floor(h1 / 2);
+                var p2x = x2 + Math.floor(w2 / 2);
+                var p2y = y2 + Math.floor(h2 / 2);
+
+                // horizontal first
+                var hx = Math.min(p1x, p2x);
+                var hw = Math.abs(p2x - p1x) + 4;
+
+                //rect(hx, p1y, hw, 4);
+
+                // vertical second (overlap guaranteed)
+                var vy = Math.min(p1y, p2y);
+                var vh = Math.abs(p2y - p1y) + 4;
+
+                //rect(p2x, vy, 4, vh); /* END AI CODE */
+
+                return []
+                  .concat(frontRooms)
+                  .concat(backRooms)
+                  .concat([
+                    { x: hx, p1y: y, w: hw, h: 4 },
+                    { x: p2x, y: vy, w: 4, h: vh },
+                  ]);
+              } // Ignore non-overlapping  rooms for now
+
+              return []
+                .concat(frontRooms)
+                .concat(backRooms)
+                .concat([{ x: x, y: y, w: w, h: h }]);
+            }
+          }
+          function generateBitmap(rooms) {
+            var bitmap = new Array(WIDTH * HEIGHT).fill(0);
+            rooms.forEach(function (room) {
+              var roomType = 100 * (Math.floor(Math.random() * 9) + 1);
+              var roomHeight = (Math.floor(Math.random() * 5) + 4) * 10;
+              var isWall = 0;
+              var effect = (Math.floor(Math.random() * 4) + 1) * 1000;
+              for (var i = room.x; i < room.x + room.w; i++) {
+                for (var j = room.y; j < room.y + room.h; j++) {
+                  bitmap[j * WIDTH + i] =
+                    roomType + roomHeight + isWall + effect;
+                }
+              }
+            });
+            for (var i = 0; i < bitmap.length; i++) {
+              if (bitmap[i] !== 0) {
+                if (
+                  bitmap[i - 1] === 0 ||
+                  bitmap[i + 1] === 0 ||
+                  bitmap[i - WIDTH] === 0 ||
+                  bitmap[i + WIDTH] === 0 ||
+                  bitmap[i - 1 - WIDTH] === 0 ||
+                  bitmap[i + 1 - WIDTH] === 0 ||
+                  bitmap[i - 1 + WIDTH] === 0 ||
+                  bitmap[i + 1 + WIDTH] === 0 ||
+                  bitmap[i - 1] === undefined ||
+                  bitmap[i + 1] === undefined ||
+                  bitmap[i - WIDTH] === undefined ||
+                  bitmap[i + WIDTH] === undefined ||
+                  bitmap[i - 1 - WIDTH] === undefined ||
+                  bitmap[i + 1 - WIDTH] === undefined ||
+                  bitmap[i - 1 + WIDTH] === undefined ||
+                  bitmap[i + 1 + WIDTH] === undefined
+                ) {
+                  bitmap[i] += 1;
+                }
+              }
+            }
+
+            return bitmap;
+          }
+          function interpretBit(bit) {
+            return {
+              type: Math.floor((bit % 1000) / 100),
+              height: Math.floor((bit % 100) / 10),
+              isWall: bit % 10,
+              effect: Math.floor(bit / 1000),
+            };
+          }
+
+          function generateDungeonMap() {
+            return generateBitmap(
+              generateDungeon(generateRooms(generateBSP(0, 0, WIDTH, HEIGHT))),
+            );
+          }
+
+          return [generateDungeonMap, interpretBit, WIDTH, HEIGHT];
+        })();
+    </script>
+    <script type>
+      // Initialize a renderer
+      var renderer = new Renderer("canvas");
+      renderer.assetManager.loadFromBase64("blocks", blocksBase64);
+      renderer.assetManager.loadFromBase64("items", itemsBase64);
+      renderer.assetManager.loadFromBase64("lights", lightBase64);
+
+      // Initialize platformer
+      plat = new Platformer(0, 1, 0);
+      plat.player.inventory.slots[0][0].content = new ItemInstance(p_sword);
+      plat.player.inventory.slots[0][0].amount = 1;
+
+      plat.player.inventory.slots[0][1].content = new ItemInstance(p_apple);
+      plat.player.inventory.slots[0][1].amount = 64;
+
+      plat.player.inventory.slots[0][2].content = new ItemInstance(p_apple);
+      plat.player.inventory.slots[0][2].amount = 64;
+
+      plat.player.inventory.slots[0][3].content = new ItemInstance(p_dagger);
+      plat.player.inventory.slots[0][3].amount = 1;
+
+      var dungeonBitmap = generateDungeonMap();
+      // Add blocks
+      /*
+   types: 1-9
+   1: grass
+   2: stone
+   3: brick
+   4: cobblestone
+   5: white
+   6: purple
+   7: blue
+   8: dirt
+   9: stone
+
+   height: 4-9
+   - no 1 is always floor
+   - no n is always ceiling
+
+   isWall: if 1, all intermediate blocks are also filled in
+   
+   effect: 1-4
+
+   Available constants: DUNGEON_WIDTH, DUNGEON_HEIGHT
+   */
+      var typeToFloor = {
+        1: "blocks/Dirt",
+        2: "blocks/Stone",
+        3: "blocks/Brick",
+        4: "blocks/Cobblestone",
+        5: "blocks/Wood",
+        6: "blocks/Grass",
+        7: "blocks/White",
+        8: "blocks/Purple",
+        9: "blocks/Blue",
+      };
+      var effectToName = {
+        1: "",
+        2: "-Moss",
+        3: "-Vines",
+        4: "-Moss-Vines",
+      };
+      var typeToWall = {
+        1: "blocks/Dirt",
+        2: "blocks/Stone",
+        3: "blocks/Brick",
+        4: "blocks/Cobblestone",
+        5: "blocks/Wood",
+        6: "blocks/Dirt",
+        7: "blocks/Dirt",
+        8: "blocks/Dirt",
+        9: "blocks/Dirt",
+      };
+      var torchCount = 0;
+      for (var i in dungeonBitmap) {
+        var bit = dungeonBitmap[i];
+
+        if (bit !== 0) {
+          var bitData = interpretBit(bit);
+
+          var x_pos = i % DUNGEON_WIDTH;
+          var z_pos = Math.floor(i / DUNGEON_WIDTH);
+
+          if (bitData.isWall === 0) {
+            plat.spawnX = x_pos - 0.5;
+            plat.spawnZ = z_pos - 0.5;
+            plat.player.x = x_pos - 0.5;
+            plat.player.z = z_pos - 0.5;
+          }
+
+          var floorMeshName =
+            typeToFloor[bitData.type] + effectToName[bitData.effect];
+
+          var floor = new RenderComponent(floorMeshName, {
+            translation: [x_pos, 0, z_pos],
+          });
+          renderer.scene.addComponent(floor);
+
+          var ceiling = new RenderComponent(floorMeshName, {
+            translation: [x_pos, bitData.height, z_pos],
+          });
+          renderer.scene.addComponent(ceiling);
+
+          plat.addBlock(new Block(x_pos - 0.5, 0 - 0.5, z_pos - 0.5, 1, 1, 1));
+          plat.addBlock(
+            new Block(x_pos - 0.5, bitData.height - 0.5, z_pos - 0.5, 1, 1, 1),
+          );
+
+          if (bitData.isWall == 1) {
+            var wallMeshName =
+              typeToWall[bitData.type] + effectToName[bitData.effect];
+            for (var i = 1; i < bitData.height; i++) {
+              var wall = new RenderComponent(wallMeshName, {
+                translation: [x_pos, i, z_pos],
+              });
+              renderer.scene.addComponent(wall);
+              plat.addBlock(
+                new Block(x_pos - 0.5, i - 0.5, z_pos - 0.5, 1, 1, 1),
+              );
+            }
+          } else {
+            if (Math.random() < 0.025) {
+              var npc = new NPC(
+                x_pos - 0.35,
+                1,
+                z_pos - 0.35,
+                new RenderComponent("items/rat", {
+                  translation: [x_pos, 2, z_pos],
+                }),
+              );
+              npc.setAI(function (plat) {
+                if (plat.player.health > 0) {
+                  var sqmag =
+                    ((plat.player.x - this.x) * (plat.player.x - this.x),
+                    (plat.player.y - this.y) * (plat.player.y - this.y),
+                    (plat.player.z - this.z) * (plat.player.z - this.z));
+                  if (sqmag < 64) {
+                    var ang = Math.atan2(
+                      this.x - plat.player.x,
+                      this.z - plat.player.z,
+                    );
+                    var diff = (ang - this.yaw + 10 * Math.PI) % (2 * Math.PI);
+                    this.yaw = (ang * 180) / Math.PI;
+                    if (sqmag < 2 && Date.now() - this.lastPunch >= 500) {
+                      return { MouseLeft: true, KeyW: true, dx: 0, dy: 0 };
+                    } else {
+                      return { KeyW: true, dx: 0, dy: 0 };
+                    }
+                  }
+                }
+                return { dx: 0, dy: 0 };
+              });
+              plat.entities.push(npc);
+              npc.addToScene(renderer.scene);
+            }
+          }
+          if (
+            (Math.random() < 0.005 || Math.random() > 0.995) &&
+            torchCount < 10
+          ) {
+            var torch = new RenderComponent(
+              "items/torch",
+              { translation: [x_pos, 0.5, z_pos] },
+              { lightType: "point", lightRange: 30 },
+            );
+            renderer.scene.addComponent(torch);
+            torchCount++;
+          }
+        }
+      }
+
+      console.log(torchCount);
+      var playerSpotLight = new RenderComponent(
+        "lights/White",
+        {
+          translation: [
+            plat.player.x + 0.5,
+            plat.player.y - 1,
+            plat.player.z + 0.5,
+          ],
+        },
+        {
+          lightColor: [1.0, 1.0, 1.0],
+          lightType: "spot",
+          lightRange: 100,
+          direction: [1, 0, 0],
+          cutOff: Math.cos(Math.PI / 12),
+          outerCutOff: Math.cos(Math.PI / 6),
+        },
+      );
+      renderer.scene.addComponent(playerSpotLight);
+
+      var playerPointLight = new RenderComponent(
+        "lights/Yellow",
+        {
+          translation: [
+            plat.player.x + 0.5,
+            plat.player.y - 1,
+            plat.player.z + 0.5,
+          ],
+        },
+        {
+          lightType: "point",
+          lightRange: 30,
+          direction: [1, 0, 0],
+          cutOff: Math.cos(Math.PI / 12),
+          outerCutOff: Math.cos(Math.PI / 6),
+        },
+      );
+      renderer.scene.addComponent(playerPointLight);
+
+      function main(timestamp) {
+        ctx2D.clearRect(0, 0, overlay.width, overlay.height);
+
+        updateDelta();
+        plat.step();
+
+        plat.player.orient(renderer.scene.camera);
+
+        playerSpotLight.transform.setTranslation(
+          plat.player.x + 0.35,
+          plat.player.y + 1.5,
+          plat.player.z + 0.35,
+        );
+        playerSpotLight.light.direction =
+          renderer.scene.camera.transform.getForward();
+
+        playerPointLight.transform.setTranslation(
+          plat.player.x + 0.35,
+          plat.player.y + 1.5,
+          plat.player.z + 0.35,
+        );
+
+        // Orient camera
+        var current =
+          plat.player.inventory.slots[0][plat.player.inventory.selected]
+            .content;
+        if (current?.model) {
+          if (
+            renderer.scene.componentList.filter(
+              (node) => node.renderComponent == held,
+            ).length == 0
+          ) {
+            renderer.scene.addComponent(held);
+          }
+          current.model();
+        } else {
+          var matching = renderer.scene.componentList.filter(
+            (node) => node.renderComponent == held,
+          );
+          if (matching.length) {
+            renderer.scene.removeComponent(matching[0]);
+          }
+        }
+
+        events.dx = 0;
+        events.dy = 0;
+
+        renderer.render();
+        plat.player.healthBar();
+
+        // Inventory
+        plat.player.inventory.dispUpd();
+
+        // Crosshair
+        ctx2D.strokeStyle = "#ffffff";
+        ctx2D.lineWidth = 2;
+        ctx2D.beginPath();
+        ctx2D.moveTo(overlay.width / 2 - 5, overlay.height / 2);
+        ctx2D.lineTo(overlay.width / 2 + 5, overlay.height / 2);
+        ctx2D.moveTo(overlay.width / 2, overlay.height / 2 - 5);
+        ctx2D.lineTo(overlay.width / 2, overlay.height / 2 + 5);
+        ctx2D.stroke();
+
+        // Handle death
+        if (plat.player.health <= 0) {
+          // Red overlay
+          ctx2D.fillStyle = "#ff000055";
+          ctx2D.fillRect(0, 0, overlay.width, overlay.height);
+
+          // Text
+          ctx2D.fillStyle = "#ffffff";
+          ctx2D.font = "bold 100px Arial";
+          ctx2D.textBaseline = "middle";
+          ctx2D.textAlign = "center";
+          ctx2D.fillText("YOU DIED", overlay.width / 2, overlay.height / 3);
+          ctx2D.font = "bold 25px Arial";
+          ctx2D.fillText(
+            "Press R to respawn",
+            overlay.width / 2,
+            overlay.height / 3 + 75,
+          );
+
+          // R to respawn
+          if (events.KeyR) {
+            plat.player.x = plat.spawnX;
+            plat.player.y = plat.spawnY;
+            plat.player.z = plat.spawnZ;
+            plat.player.xv = 0;
+            plat.player.yv = 0;
+            plat.player.zv = 0;
+            plat.player.health = plat.player.maxHealth;
+            plat.player.resetHitbox();
+          }
+        }
+        // Draw pointer (if in use)
+        drawPointer();
+
+        // Update prev events
+        Object.assign(eventsPrev, events);
+
+        requestAnimationFrame(main);
+      }
+      requestAnimationFrame(main);
+    </script>
+    <script></script>
+  </body>
+</html>
+
+<!--
+
+rats - a 3d dungeon crawler
+
+xyzyyxx x CodeEngineer
+
+#coc26 #3D #dungeon-crawler
+
+NOTES
+- WASD SPACE to move
+- Click to attack
+- Numbers to switch weapons or heal
+
+Crawl the dungeon and kill the rats
+
+CodeEngineer: I used my library from round 1, but it has undergone some significant changes. You can compare the code with a diff-checker to see how much I've changed it.
+
+If it seems broken, restart the page.
+
+Add ?width=1200&height=800&editor=no for the best experience.
+
+The dungeons are procedurally generated. Restart the page for a different dungeon.
+
+-->

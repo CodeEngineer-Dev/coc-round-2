@@ -20,52 +20,52 @@ let delta = 0;
 let past = Date.now();
 
 /** Utility function for updating delta clock.
- * 
+ *
  */
 function updateDelta() {
   // Calculates the difference between the last frame and this frame, then resets the last frame time
-  const now = Date.now();
+  let now = Date.now();
   delta = Math.min((now - past) / 1000, 0.1);
   past = now;
 }
 
 // Canvas and overlay
-const canvas = document.querySelector("#canvas");
-const overlay = document.querySelector("#overlay");
+let canvas = document.querySelector("#canvas");
+let overlay = document.querySelector("#overlay");
 canvas.width = canvas.getBoundingClientRect().width;
 canvas.height = canvas.getBoundingClientRect().height;
 overlay.width = overlay.getBoundingClientRect().width;
 overlay.height = overlay.getBoundingClientRect().height;
-const ctx2D = overlay.getContext("2d");
+let ctx2D = overlay.getContext("2d");
 
 // Events (events + mouse)
-const events = {dx: 0, dy: 0};
-const eventsPrev = {dx: 0, dy: 0};
+let events = { dx: 0, dy: 0 };
+let eventsPrev = { dx: 0, dy: 0 };
 let mouseX = 0;
 let mouseY = 0;
 let pointerInUse = false;
 
 // When key down, mark it as true
-document.addEventListener("keydown", e => {
+document.addEventListener("keydown", (e) => {
   events[e.code] = true;
   // Shift shortcut
   events.Shift = events.ShiftLeft || events.ShiftRight;
-})
+});
 
 // Similar to above
-document.addEventListener("keyup", e => {
+document.addEventListener("keyup", (e) => {
   events[e.code] = false;
   events.Shift = events.ShiftLeft || events.ShiftRight;
-})
+});
 
 // Lock pointer upon click
 overlay.addEventListener("mousedown", () => {
   overlay.requestPointerLock();
-})
+});
 
 /** Mouse movement event listener
- * 
- * @param {Event} event 
+ *
+ * @param {Event} event
  */
 function onMouseMove(event) {
   events.dx = event.movementX;
@@ -80,30 +80,38 @@ function onMouseMove(event) {
 
 // More listeners
 /** Mouse down event listener
- * 
- * @param {Event} e 
+ *
+ * @param {Event} e
  */
 function onMouseDown(e) {
   switch (e.which) {
-    case 1: events.MouseLeft = true; break;
-    case 3: events.MouseRight = true; break;
+    case 1:
+      events.MouseLeft = true;
+      break;
+    case 3:
+      events.MouseRight = true;
+      break;
   }
 }
 
 /** Mouse up event listener
- * 
- * @param {Event} e 
+ *
+ * @param {Event} e
  */
 function onMouseUp(e) {
   switch (e.which) {
-    case 1: events.MouseLeft = false; break;
-    case 3: events.MouseRight = false; break;
+    case 1:
+      events.MouseLeft = false;
+      break;
+    case 3:
+      events.MouseRight = false;
+      break;
   }
 }
 
 // Turn pointer on and off
 /** Turn pointer on (eg for opening inventory), when in the pointer lock state
- * 
+ *
  */
 function turnPointerOn() {
   pointerInUse = true;
@@ -112,14 +120,14 @@ function turnPointerOn() {
 }
 
 /** Turn pointer off (eg for closing inventory), when in the pointer lock state
- * 
+ *
  */
 function turnPointerOff() {
   pointerInUse = false;
 }
 
 /** Toggle pointer (eg for opening inventory), when in the pointer lock state
- * 
+ *
  */
 function togglePointer() {
   (pointerInUse ? turnPointerOff : turnPointerOn)();
@@ -127,10 +135,10 @@ function togglePointer() {
 
 // Draw pointer if in use
 /** Draws the pointer.
- * 
+ *
  */
 function drawPointer() {
-if (pointerInUse) {
+  if (pointerInUse) {
     ctx2D.lineWidth = 1;
     ctx2D.strokeStyle = "#000000";
     ctx2D.fillStyle = "#ffffff";
@@ -164,4 +172,4 @@ document.addEventListener("pointerlockchange", () => {
     document.removeEventListener("mouseup", onMouseUp);
     events.Mouse = false;
   }
-})
+});
