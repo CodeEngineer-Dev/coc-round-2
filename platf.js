@@ -100,6 +100,8 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
         this.yv += JUMP / 2;
         this.zv += -dz / m * 30;
       })
+
+      this.lastPunch = -Infinity;
     }
 
     /** Resets hitbox.
@@ -162,7 +164,7 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
      * @param {Platformer} plat
      * @param {Object} events
      */
-    step(plat, events) {
+    step(plat, events, eventsPrev) {
       // Manage x and z velocities.
       this.xv *= Math.pow(FRIC, delta);
       this.zv *= Math.pow(FRIC, delta);
@@ -253,10 +255,27 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
         if (slot.content?.use) {
           const consumed = slot.content.use(this);
           if (consumed) {
-            slot.amount--;
+            slot.amount --;
             if (slot.amount == 0) {
               slot.content = null;
             }
+          }
+        } else {
+          // punch
+          if (Date.now() - this.lastPunch >= 500) {
+            this.lastPunch = Date.now();
+            const ray = new Ray(
+              this.x + this.constructor.width / 2,
+              this.y + this.constructor.height - 0.3,
+              this.z + this.constructor.width / 2,
+              this.yaw, this.pitch
+            );
+            const intersect = ray.collideEntities([...plat.blocks, ...plat.entities, plat.player].filter(e => e != this));
+            if ((intersect.entity instanceof NPC || intersect.entity instanceof Player) && intersect.data?.t < 4) {
+              intersect.entity.indirectDamage({strength: 5, from: this});
+            }
+          } else {
+            this.lastPunch = Date.now();
           }
         }
       }
@@ -285,6 +304,8 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
       this.ai = function (plat) {
         return { dx: 0, dy: 0 };
       };
+      this.events = { dx: 0, dy: 0 };
+      this.eventsPrev = { dx: 0, dy: 0 };
     }
 
     /** Adds the NPC to the scene.
@@ -304,7 +325,7 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
         this.y + this.constructor.height / 2,
         this.z + this.constructor.width / 2,
       );
-      this.renderComponent.transform.setRotation(0, 0, this.yaw);
+      this.renderComponent.transform.setRotation(0, this.yaw, 0);
     }
 
     /** Sets ai. Takes function (plat) { return events; }.
@@ -411,11 +432,21 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
      *
      */
     step() {
-      this.player.step(this, events);
+      this.player.step(this, events, eventsPrev);
       for (const entity of this.entities) {
-        entity.step(this, entity.ai.call(entity, this));
+        entity.events = entity.ai.call(entity, this);
+        entity.step(this, entity.events, entity.eventsPrev);
         entity.updateRenderComponent();
+        entity.eventsPrev = Object.assign({}, entity.events);
+        if (entity.health <= 0) {
+          // Delete the entity's render component
+          const matching = renderer.scene.componentList.filter(node => node.renderComponent == entity.renderComponent);
+          if (matching.length) {
+            renderer.scene.removeComponent(matching[0]);
+          }
+        }
       }
+      this.entities = this.entities.filter(entity => entity.health > 0);
     }
   }
 

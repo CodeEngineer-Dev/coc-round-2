@@ -50,103 +50,69 @@ function positionHeld(up, forward, rot, yaw, pitch, roll) {
   held.transform.setRotationQuaternion(playerRotation);
 }
 
-const p_sword = new ItemPrototype("Sword", {
-  stackable: false,
-  iconGetter: function () {
-    return texture1.canvas;
-  },
-  model: function () {
-    held.mesh = "items/sword";
-    held.transform.setScale(0.5, 0.5, 0.5);
-    const attackThing =
-      1 -
-      Math.min(
-        Math.pow((Date.now() - (this.data.lastUse ?? -Infinity)) / 250, 0.5),
-        1,
-      );
-    positionHeld(
-      -0.9,
-      1,
-      (attackThing * 1.25 - 1) * Math.PI * 0.3,
-      attackThing * 2,
-      -attackThing / 5,
-      attackThing,
-    );
-  },
-  use: function (user) {
-    if (Date.now() - this.data.lastUse >= 250) {
-      this.data.lastUse = Date.now();
-      const cone = new Cone(
-        user.x + user.constructor.width / 2,
-        user.y + user.constructor.height - 0.3,
-        user.z + user.constructor.width / 2,
-        user.yaw,
-        user.pitch,
-        Math.PI / 4,
-      );
-      const intersect = cone.collideEntities(
-        [...plat.entities, plat.player].filter((e) => e != user),
-      );
-      for (const entry of intersect) {
-        if (
-          (entry.entity instanceof NPC || entry.entity instanceof Player) &&
-          entry.data?.dist < 4
-        ) {
-          entry.entity.indirectDamage({ strength: 10, from: user });
-          console.log(entry.entity.health);
+const p_sword = new ItemPrototype(
+  "Sword",
+  {
+    stackable: false,
+    iconGetter: function() {
+      return texture1.canvas;
+    },
+    model: function() {
+      held.mesh = "items/sword";
+      held.transform.setScale(0.5, 0.5, 0.5);
+      const attackThing = 1 - Math.min(Math.pow((Date.now() - (this.data.lastUse ?? -Infinity)) / 250, 0.5), 1);
+      positionHeld(-0.9, 1, (attackThing * 1.25 - 1) * Math.PI * 0.3, attackThing * 2, - attackThing / 5, attackThing);
+    },
+    use: function(user) {
+      if (Date.now() - this.data.lastUse >= 250) {
+        this.data.lastUse = Date.now();
+        const cone = new Cone(
+          user.x + user.constructor.width / 2,
+          user.y + user.constructor.height - 0.3,
+          user.z + user.constructor.width / 2,
+          user.yaw, user.pitch, Math.PI / 4
+        );
+        const intersect = cone.collideEntities([...plat.entities, plat.player].filter(e => e != user));
+        for (const entry of intersect) {
+          if ((entry.entity instanceof NPC || entry.entity instanceof Player) && entry.data?.dist < 4) {
+            entry.entity.indirectDamage({strength: 10, from: user});
+          }
         }
       }
-    } else {
+    else {
       this.data.lastUse = Date.now();
     }
   },
-});
+);
 
-const p_dagger = new ItemPrototype("Dagger", {
-  stackable: false,
-  iconGetter: function () {
-    return texture2.canvas;
-  },
-  model: function () {
-    held.mesh = "items/dagger";
-    held.transform.setScale(0.5, 0.5, 0.5);
-    const attackThing =
-      1 -
-      Math.min(
-        Math.pow((Date.now() - (this.data.lastUse ?? -Infinity)) / 500, 0.5),
-        1,
-      );
-    positionHeld(
-      -0.7,
-      attackThing + 1,
-      -Math.PI * 0.3 + attackThing * 0.5,
-      0,
-      (Math.PI / 2) * (1 - attackThing),
-      0,
-    );
-  },
-  use: function (user) {
-    if (Date.now() - this.data.lastUse >= 500) {
-      this.data.lastUse = Date.now();
-      const ray = new Ray(
-        user.x + user.constructor.width / 2,
-        user.y + user.constructor.height - 0.3,
-        user.z + user.constructor.width / 2,
-        user.yaw,
-        user.pitch,
-      );
-      const intersect = ray.collideEntities(
-        [...plat.blocks, ...plat.entities, plat.player].filter(
-          (e) => e != user,
-        ),
-      );
-      if (
-        (intersect.entity instanceof NPC ||
-          intersect.entity instanceof Player) &&
-        intersect.data?.t < 4
-      ) {
-        intersect.entity.indirectDamage({ strength: 25, from: user });
-        console.log(intersect.entity.health);
+const p_dagger = new ItemPrototype(
+  "Dagger",
+  {
+    stackable: false,
+    iconGetter: function() {
+      return texture2.canvas;
+    },
+    model: function() {
+      held.mesh = "items/dagger";
+      held.transform.setScale(0.5, 0.5, 0.5);
+      const attackThing = 1 - Math.min(Math.pow((Date.now() - (this.data.lastUse ?? -Infinity)) / 500, 0.5), 1);
+      positionHeld(-0.7, attackThing + 1, -Math.PI * 0.3 + attackThing * 0.5, 0, Math.PI / 2 * (1 - attackThing), 0);
+    },
+    use: function(user) {
+      if (Date.now() - this.data.lastUse >= 500) {
+        this.data.lastUse = Date.now();
+        const ray = new Ray(
+          user.x + user.constructor.width / 2,
+          user.y + user.constructor.height - 0.3,
+          user.z + user.constructor.width / 2,
+          user.yaw, user.pitch
+        );
+        const intersect = ray.collideEntities([...plat.blocks, ...plat.entities, plat.player].filter(e => e != user));
+        if ((intersect.entity instanceof NPC || intersect.entity instanceof Player) && intersect.data?.t < 4) {
+          intersect.entity.indirectDamage({strength: 25, from: user});
+        }
+      } else {
+        this.data.lastUse = Date.now();
       }
     } else {
       this.data.lastUse = Date.now();
