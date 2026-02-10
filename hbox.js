@@ -132,6 +132,11 @@ class Ray {
     }
   }
 
+  /** Collision test with multiple entities.
+   * 
+   * @param {Array} entities 
+   * @returns {Object}
+   */
   collideEntities(entities) {
     // If there are no entities, then it returns a null result
     // Otherwise, it takes each entity, maps it to { entity: entity, data: collision data with ray },
@@ -144,14 +149,189 @@ class Ray {
   }
 }
 
+/** Cone. CAN ONLY TEST WITH CubicHitbox (because, frankly, there's no need to test with itself)
+ * 
+ * @class Cone
+ * @typedef {Cone}
+ */
+class Cone {
+  /** Creates an instance of Cone.
+   * 
+   * @constructor
+   * @param {Number} x 
+   * @param {Number} y 
+   * @param {Number} z 
+   * @param {Number} yaw 
+   * @param {Number} pitch 
+   * @param {Number} sweepAngle 
+   */
+  constructor(x, y, z, yaw, pitch, sweepAngle) {
+    this.p = glMatrix.vec3.fromValues(x, y, z);
+    const deg = 180 / Math.PI;
+
+    // forward
+    const q = glMatrix.quat.fromEuler(glMatrix.quat.create(), pitch * deg, yaw * deg, 0);
+    this.f = glMatrix.vec3.fromValues(1, 0, 0);
+    this.f = glMatrix.vec3.transformQuat(this.f, this.f, q);
+
+    this.sweepAngle = sweepAngle;
+  }
+
+  /** Collision test with cubic hitbox.
+   * 
+   * @param {CubicHitbox} cubic 
+   * @returns {Object} 
+   */
+  collide(cubic) {
+    // tests with center
+    const vec = glMatrix.vec3.fromValues(
+      (cubic.x1 + cubic.x2) / 2,
+      (cubic.y1 + cubic.y2) / 2,
+      (cubic.z1 + cubic.z2) / 2
+    )
+    glMatrix.vec3.subtract(vec, vec, this.p);
+    const ang = glMatrix.vec3.angle(vec, this.f);
+    if (ang <= this.sweepAngle) {
+      return { dist: glMatrix.vec3.length(vec) };
+    } else {
+      return { dist: Infinity };
+    }
+  }
+
+  /** Collision test with multiple entities.
+   * 
+   * @param {Array} entities 
+   * @returns {Array} 
+   */
+  collideEntities(entities) {
+    return (
+      entities.map(entity => ({ entity: entity, data: this.collide(entity.hbox)}))
+              .filter(entry => entry.data.dist != Infinity)
+    );
+  }
+}
+
+// UNUSED.
 /** Sweep. CAN ONLY TEST WITH CubicHitbox (because, frankly, there's no need to test with itself)
  * 
  * @class Sweep
  * @typedef {Sweep}
  */
+// AI helped me write this code, but it did not generate the code.
 class Sweep {
-  // i'll save this for later
-  constructor(x, y, z, yaw, pitch) {
+  /** Creates an instance of Sweep.
+   * 
+   * @constructor
+   * @param {Number} x 
+   * @param {Number} y 
+   * @param {Number} z 
+   * @param {Number} yaw 
+   * @param {Number} pitch 
+   * @param {Number} sweepAngle 
+   */
+  constructor(x, y, z, yaw, pitch, sweepAngle) {
+    this.p = glMatrix.vec3.fromValues(x, y, z);
+    const deg = 180 / Math.PI;
+
+    // normal
+    const q = glMatrix.quat.fromEuler(glMatrix.quat.create(), pitch * deg + 90, yaw * deg, 0);
+    this.n = glMatrix.vec3.fromValues(1, 0, 0);
+    this.n = glMatrix.vec3.transformQuat(this.n, this.n, q);
+
+    // forward
+    glMatrix.quat.fromEuler(q, pitch * deg, yaw * deg, 0);
+    this.f = glMatrix.vec3.fromValues(1, 0, 0);
+    this.f = glMatrix.vec3.transformQuat(this.f, this.f, q);
+
+    this.sweepAngle = sweepAngle;
+  }
+
+  planeIntersect(auxn, r) {
+    // auxn dot x = r
+    // n dot x = n dot p
+
+    // the line's vector can be found using cross product
+    const linev = glMatrix.vec3.cross(glMatrix.vec3.create(), this.n, auxn);
+
+    // edge case: parallel planes
+    if (glMatrix.vec3.length(linev) < 1e-9) {
+      return { type: "parallel" };
+    }
+
+    // otherwise find a point they share
+    // we will solve the equations
+    // auxn dot x = r
+    // n dot x = n dot p
+    // (n cross auxn) dot x = 0
+    // ok i'll outsource all the heavy lifting to glMatrix.mat3 lol
+    const mat = glMatrix.mat3.fromValues(...auxn, ...this.n, ...linev);
+    // transpose mat because it is the wrong way
+    glMatrix.transpose(mat, mat);
+    // invert mat
+    glMatrix.invert(mat, mat);
+    // now apply it to the vector <r, n dot p, 0>
+    const pointOnLine = glMatrix.vec3.fromValues(r, glMatrix.vec3.dot(this.n, this.p), 0);
+    glMatrix.vec3.transformMat3(pointOnLine, pointOnLine, mat);
+    
+    return {
+      type: "line",
+      vec: linev,
+      point: pointOnLine
+    };
+  }
+
+  rayCollision2D(px, py, vx, vy, x1, y1, x2, y2) {
+    let ignoreX, ignoreY;
+
+    // X slab
+    if (vx == 0) {
+      if (px >= x1 && px <= cubic.x2) ignoreX = true;
+      else return { t: Infinity };
+    }
+    const xt1 = (x1 - px) / vx;
+    const xt2 = (x2 - px) / vx;
+
+    // Y slab
+    if (vy == 0) {
+      if (py >= y1 && py <= y2) ignoreY = true;
+      else return { t: Infinity };
+    }
+    const yt1 = (y1 - py) / vy;
+    const yt2 = (y2 - py) / vy;
+
+    // Enter and exit time
+    const enterT = Math.max(
+      ignoreX ? -Infinity : Math.min(xt1, xt2),
+      ignoreY ? -Infinity : Math.min(yt1, yt2)
+    );
+    const exitT = Math.min(
+      ignoreX ? +Infinity : Math.max(xt1, xt2),
+      ignoreY ? +Infinity : Math.max(yt1, yt2)
+    );
+
+    if (enterT > exitT) {
+      return null;
+    } else {
+      const enterX = px + vx * enterX;
+      const enterY = py + vy * enterY;
+      const exitX = px + vx * exitX;
+      const exitY = py + vy * exitY;
+      return { enterT, enterX, enterY, exitT, exitX, exitY };
+    }
+  }
+
+  collide(cubic) {
+    const buffer = glMatrix.vec3.create();
+    // check all 6 sides
+    glMatrix.vec3.set(buffer, 1, 0, 0);
+    const test1 = this.planeIntersect(buffer, cubic.x1); // yz, -x side
+    const test2 = this.planeIntersect(buffer, cubic.x2); // yz, +x side
+    glMatrix.vec3.set(buffer, 0, 1, 0);
+    const test3 = this.planeIntersect(buffer, cubic.y1); // xz, -y side
+    const test4 = this.planeIntersect(buffer, cubic.y2); // xz, +y side
+    glMatrix.vec3.set(buffer, 0, 0, 1);
+    const test5 = this.planeIntersect(buffer, cubic.z1); // xy, -z side
+    const test6 = this.planeIntersect(buffer, cubic.z2); // xy, +z side
 
   }
 }

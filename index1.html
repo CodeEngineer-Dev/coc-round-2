@@ -55,11 +55,10 @@ https://www.khanacademy.org/cs/i/5482258067734528
     renderer.assetManager.loadFromBase64('blocks', blocksBase64);
     renderer.assetManager.loadFromBase64('items', itemsBase64);
     renderer.assetManager.loadFromBase64('lights', lightBase64);
-    console.log(renderer.assetManager)
     
     // Initialize platformer
     plat = new Platformer(0, 1, 0);
-    plat.player.inventory.slots[0][0].content = new ItemInstance(proto1);
+    plat.player.inventory.slots[0][0].content = new ItemInstance(p_sword);
     plat.player.inventory.slots[0][0].amount = 1;
 
     plat.player.inventory.slots[0][1].content = new ItemInstance(p_apple);
@@ -68,9 +67,13 @@ https://www.khanacademy.org/cs/i/5482258067734528
     plat.player.inventory.slots[0][2].content = new ItemInstance(p_apple);
     plat.player.inventory.slots[0][2].amount = 64;
 
-   console.log(generateDungeonMap())
-   let dungeonBitmap = generateDungeonMap();
-   /*
+    plat.player.inventory.slots[0][3].content = new ItemInstance(p_dagger);
+    plat.player.inventory.slots[0][3].amount = 1;
+
+    console.log(generateDungeonMap())
+    let dungeonBitmap = generateDungeonMap();
+    // Add blocks
+    /*
    types: 1-9
    1: grass
    2: stone
@@ -168,10 +171,11 @@ https://www.khanacademy.org/cs/i/5482258067734528
       }
     }
 
-    const npc1 = new NPC(-3, 20, 0, new RenderComponent("items/rat"));
+    const npc1 = new NPC(0, 2, 0, new RenderComponent("items/rat"));
     npc1.setAI(function(plat) {
       return { Space: true, dx: 0, dy: 0 };
     });
+    console.log(npc1);
     plat.entities.push(npc1);
     plat.entities[0].addToScene(renderer.scene);
 
@@ -225,6 +229,8 @@ https://www.khanacademy.org/cs/i/5482258067734528
       ctx2D.beginPath();
       ctx2D.moveTo(overlay.width / 2 - 5, overlay.height / 2);
       ctx2D.lineTo(overlay.width / 2 + 5, overlay.height / 2);
+      ctx2D.moveTo(overlay.width / 2, overlay.height / 2 - 5);
+      ctx2D.lineTo(overlay.width / 2, overlay.height / 2 + 5);
       ctx2D.stroke();
 
       // Handle death

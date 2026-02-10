@@ -1,9 +1,10 @@
-const { Block, Entity, NPC, Platformer } = (function () {
+const { Block, Entity, NPC, Player, Platformer } = (function () {
   // Constants
-  const HVEL = 4; // PLEASE ADJUST AS NECESSARY, I HAVE NOT PLAYTESTED THESE CONSTANTS MAINLY
+  const HACC = 50; // PLEASE ADJUST AS NECESSARY, I HAVE NOT PLAYTESTED THESE CONSTANTS MAINLY
   const JUMP = 10; // BECAUSE I HAVE NO IDEA HOW TO ADD A BLOCK TO THE SCENE.
   const GRAV = -30;
   const SENS = Math.PI / 250; // mouse sensitivity
+  const FRIC = 0.00001;
 
   /** Block, for use in the platforming engine
    *
@@ -36,7 +37,7 @@ const { Block, Entity, NPC, Platformer } = (function () {
      */
     static fromNode(w, h, l, node) {
       // This moves a vector to where the block is, and then puts the block there
-      const vec = glMatrix.vec4.fromValues(0, 0, 0, 1);
+      const vec = glMatrix.vec3.create();
       glMatrix.vec4.transformMat4(vec, vec, node.worldMatrix); // vec = node.worldMatrix * vec
       return new Block(
         vec[0] - 0.5 * w,
@@ -87,6 +88,18 @@ const { Block, Entity, NPC, Platformer } = (function () {
       this.displayHealth = this.health; // For a smooth animation when damaging or regen-ing
       // Inventory
       this.inventory = new Inventory();
+
+      this.setDamageReciever(data => {
+        this.damage(data.strength);
+        // knockback
+        const dx = data.user.x - this.x;
+        const dy = data.user.y - this.y;
+        const dz = data.user.z - this.z;
+        const m = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        this.xv += dx / m;
+        this.yv += JUMP / 2;
+        this.zv += dz / m;
+      })
     }
 
     /** Resets hitbox.
@@ -114,6 +127,22 @@ const { Block, Entity, NPC, Platformer } = (function () {
       }
     }
 
+    /** Set damage reciever. f takes object as parameter, the object having properties strength, and attacker.
+     * 
+     * @param {Function} f 
+     */
+    setDamageReciever(f) {
+      this.damageReciever = f;
+    }
+
+    /** Calls damage reciever.
+     * 
+     * @param {Object} obj 
+     */
+    indirectDamage(obj) {
+      this.damageReciever.call(this, obj);
+    }
+
     /** Takes an array, returns first object to collide with or null.
      *
      * @param {Array} arr
@@ -135,26 +164,26 @@ const { Block, Entity, NPC, Platformer } = (function () {
      */
     step(plat, events) {
       // Manage x and z velocities.
-      this.xv = 0;
-      this.zv = 0;
+      this.xv *= Math.pow(FRIC, delta);
+      this.zv *= Math.pow(FRIC, delta);
 
       // Switched these around until they worked, needed to add negation signs to forward and backwards.
       if (this.health > 0 && !this.inventory.opened) {
         if (events.KeyD) {
-          this.xv += HVEL * Math.cos(this.yaw);
-          this.zv -= HVEL * Math.sin(this.yaw);
+          this.xv += HACC * Math.cos(this.yaw) * delta;
+          this.zv -= HACC * Math.sin(this.yaw) * delta;
         }
         if (events.KeyS) {
-          this.xv += HVEL * Math.sin(this.yaw);
-          this.zv += HVEL * Math.cos(this.yaw);
+          this.xv += HACC * Math.sin(this.yaw) * delta;
+          this.zv += HACC * Math.cos(this.yaw) * delta;
         }
         if (events.KeyA) {
-          this.xv -= HVEL * Math.cos(this.yaw);
-          this.zv += HVEL * Math.sin(this.yaw);
+          this.xv -= HACC * Math.cos(this.yaw) * delta;
+          this.zv += HACC * Math.sin(this.yaw) * delta;
         }
         if (events.KeyW) {
-          this.xv -= HVEL * Math.sin(this.yaw);
-          this.zv -= HVEL * Math.cos(this.yaw);
+          this.xv -= HACC * Math.sin(this.yaw) * delta;
+          this.zv -= HACC * Math.cos(this.yaw) * delta;
         }
       }
       // Handle each axis separately
@@ -390,5 +419,5 @@ const { Block, Entity, NPC, Platformer } = (function () {
     }
   }
 
-  return { Block, Entity, NPC, Platformer };
+  return { Block, Entity, NPC, Player, Platformer };
 })();
