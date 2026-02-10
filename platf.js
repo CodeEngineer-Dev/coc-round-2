@@ -89,17 +89,17 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
       // Inventory
       this.inventory = new Inventory();
 
-      this.setDamageReciever(function(data) {
+      this.setDamageReciever(function (data) {
         this.damage(data.strength);
         // knockback
         const dx = data.from.x - this.x;
         const dy = data.from.y - this.y;
         const dz = data.from.z - this.z;
         const m = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        this.xv += -dx / m * 30;
+        this.xv += (-dx / m) * 30;
         this.yv += JUMP / 2;
-        this.zv += -dz / m * 30;
-      })
+        this.zv += (-dz / m) * 30;
+      });
 
       this.lastPunch = -Infinity;
     }
@@ -130,16 +130,16 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
     }
 
     /** Set damage reciever. f takes object as parameter, the object having properties strength, and attacker.
-     * 
-     * @param {Function} f 
+     *
+     * @param {Function} f
      */
     setDamageReciever(f) {
       this.damageReciever = f;
     }
 
     /** Calls damage reciever.
-     * 
-     * @param {Object} obj 
+     *
+     * @param {Object} obj
      */
     indirectDamage(obj) {
       this.damageReciever.call(this, obj);
@@ -255,7 +255,7 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
         if (slot.content?.use) {
           const consumed = slot.content.use(this);
           if (consumed) {
-            slot.amount --;
+            slot.amount--;
             if (slot.amount == 0) {
               slot.content = null;
             }
@@ -268,11 +268,20 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
               this.x + this.constructor.width / 2,
               this.y + this.constructor.height - 0.3,
               this.z + this.constructor.width / 2,
-              this.yaw, this.pitch
+              this.yaw,
+              this.pitch,
             );
-            const intersect = ray.collideEntities([...plat.blocks, ...plat.entities, plat.player].filter(e => e != this));
-            if ((intersect.entity instanceof NPC || intersect.entity instanceof Player) && intersect.data?.t < 4) {
-              intersect.entity.indirectDamage({strength: 5, from: this});
+            const intersect = ray.collideEntities(
+              [...plat.blocks, ...plat.entities, plat.player].filter(
+                (e) => e != this,
+              ),
+            );
+            if (
+              (intersect.entity instanceof NPC ||
+                intersect.entity instanceof Player) &&
+              intersect.data?.t < 4
+            ) {
+              intersect.entity.indirectDamage({ strength: 5, from: this });
             }
           } else {
             this.lastPunch = Date.now();
@@ -301,11 +310,28 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
     constructor(x, y, z, renderComponent) {
       super(x, y, z);
       this.renderComponent = renderComponent;
+      this.lastDamaged = 0;
       this.ai = function (plat) {
         return { dx: 0, dy: 0 };
       };
       this.events = { dx: 0, dy: 0 };
       this.eventsPrev = { dx: 0, dy: 0 };
+      this.setDamageReciever(function (data) {
+        if (data.from instanceof Player) {
+          this.damage(data.strength);
+          this.renderComponent.mesh = "items/rat-damaged";
+          this.lastDamaged = Date.now();
+        }
+
+        // knockback
+        const dx = data.from.x - this.x;
+        const dy = data.from.y - this.y;
+        const dz = data.from.z - this.z;
+        const m = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        this.xv += (-dx / m) * 30;
+        this.yv += JUMP / 2;
+        this.zv += (-dz / m) * 30;
+      });
     }
 
     /** Adds the NPC to the scene.
@@ -326,6 +352,9 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
         this.z + this.constructor.width / 2,
       );
       this.renderComponent.transform.setRotation(0, this.yaw, 0);
+      if (Date.now() - this.lastDamaged > 250) {
+        this.renderComponent.mesh = "items/rat";
+      }
     }
 
     /** Sets ai. Takes function (plat) { return events; }.
@@ -440,13 +469,15 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
         entity.eventsPrev = Object.assign({}, entity.events);
         if (entity.health <= 0) {
           // Delete the entity's render component
-          const matching = renderer.scene.componentList.filter(node => node.renderComponent == entity.renderComponent);
+          const matching = renderer.scene.componentList.filter(
+            (node) => node.renderComponent == entity.renderComponent,
+          );
           if (matching.length) {
             renderer.scene.removeComponent(matching[0]);
           }
         }
       }
-      this.entities = this.entities.filter(entity => entity.health > 0);
+      this.entities = this.entities.filter((entity) => entity.health > 0);
     }
   }
 
