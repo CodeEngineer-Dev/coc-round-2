@@ -89,16 +89,16 @@ const { Block, Entity, NPC, Player, Platformer } = (function () {
       // Inventory
       this.inventory = new Inventory();
 
-      this.setDamageReciever(data => {
+      this.setDamageReciever(function(data) {
         this.damage(data.strength);
         // knockback
-        const dx = data.user.x - this.x;
-        const dy = data.user.y - this.y;
-        const dz = data.user.z - this.z;
+        const dx = data.from.x - this.x;
+        const dy = data.from.y - this.y;
+        const dz = data.from.z - this.z;
         const m = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        this.xv += dx / m;
+        this.xv += -dx / m * 30;
         this.yv += JUMP / 2;
-        this.zv += dz / m;
+        this.zv += -dz / m * 30;
       })
     }
 

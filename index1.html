@@ -162,7 +162,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
           if (Math.random() < 0.05) {
             const npc = new NPC(x_pos - 0.35, 1, z_pos - 0.35, new RenderComponent("items/rat", {translation: [x_pos, 2, z_pos]}));
             npc.setAI(function(plat) {
-              return { Space: true, dx: 0, dy: 0 };
+              return { Space: false, dx: 0, dy: 0 };
             });
             plat.entities.push(npc);
             plat.entities[plat.entities.length - 1].addToScene(renderer.scene);
@@ -173,7 +173,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
 
     const npc1 = new NPC(0, 2, 0, new RenderComponent("items/rat"));
     npc1.setAI(function(plat) {
-      return { Space: true, dx: 0, dy: 0 };
+      return { Space: false, dx: 0, dy: 0 };
     });
     console.log(npc1);
     plat.entities.push(npc1);
