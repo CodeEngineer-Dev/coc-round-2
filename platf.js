@@ -1,4 +1,4 @@
-const { Block, Entity, NPC, Platformer } = (function () {
+const { Block, Entity, NPC, Player, Platformer } = (function () {
   // Constants
   const HVEL = 4; // PLEASE ADJUST AS NECESSARY, I HAVE NOT PLAYTESTED THESE CONSTANTS MAINLY
   const JUMP = 10; // BECAUSE I HAVE NO IDEA HOW TO ADD A BLOCK TO THE SCENE.
@@ -36,7 +36,7 @@ const { Block, Entity, NPC, Platformer } = (function () {
      */
     static fromNode(w, h, l, node) {
       // This moves a vector to where the block is, and then puts the block there
-      const vec = glMatrix.vec4.fromValues(0, 0, 0, 1);
+      const vec = glMatrix.vec3.create();
       glMatrix.vec4.transformMat4(vec, vec, node.worldMatrix); // vec = node.worldMatrix * vec
       return new Block(
         vec[0] - 0.5 * w,
@@ -385,5 +385,5 @@ const { Block, Entity, NPC, Platformer } = (function () {
     }
   }
 
-  return { Block, Entity, NPC, Platformer };
+  return { Block, Entity, NPC, Player, Platformer };
 })();

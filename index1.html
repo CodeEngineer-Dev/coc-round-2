@@ -55,11 +55,10 @@ https://www.khanacademy.org/cs/i/5482258067734528
     renderer.assetManager.loadFromBase64('blocks', blocksBase64);
     renderer.assetManager.loadFromBase64('items', itemsBase64);
     renderer.assetManager.loadFromBase64('lights', lightBase64);
-    console.log(renderer.assetManager)
     
     // Initialize platformer
-    plat = new Platformer(0, 1, 0);
-    plat.player.inventory.slots[0][0].content = new ItemInstance(proto1);
+    plat = new Platformer(0, 3, 0);
+    plat.player.inventory.slots[0][0].content = new ItemInstance(p_sword);
     plat.player.inventory.slots[0][0].amount = 1;
 
     plat.player.inventory.slots[0][1].content = new ItemInstance(p_apple);
@@ -68,96 +67,12 @@ https://www.khanacademy.org/cs/i/5482258067734528
     plat.player.inventory.slots[0][2].content = new ItemInstance(p_apple);
     plat.player.inventory.slots[0][2].amount = 64;
 
-   console.log(generateDungeonMap())
-   let dungeonBitmap = generateDungeonMap();
-   /*
-   types: 1-9
-   1: grass
-   2: stone
-   3: brick
-   4: cobblestone
-   5: white
-   6: purple
-   7: blue
-   8: dirt
-   9: stone
+    plat.player.inventory.slots[0][3].content = new ItemInstance(p_dagger);
+    plat.player.inventory.slots[0][3].amount = 1;
 
-   height: 4-9
-   - no 1 is always floor
-   - no n is always ceiling
-
-   isWall: if 1, all intermediate blocks are also filled in
-   
-   effect: 1-4
-
-   Available constants: DUNGEON_WIDTH, DUNGEON_HEIGHT
-   */
-    var typeToFloor = {
-      1: 'blocks/Dirt',
-      2: 'blocks/Stone',
-      3: 'blocks/Brick',
-      4: 'blocks/Cobblestone',
-      5: 'blocks/Wood',
-      6: 'blocks/Grass',
-      7: 'blocks/White',
-      8: 'blocks/Purple',
-      9: 'blocks/Blue'
-    };
-    var effectToName = {
-      1: '',
-      2: '-Moss',
-      3: '-Vines',
-      4: '-Moss-Vines'
-    };
-    var typeToWall = {
-      1: 'blocks/Dirt',
-      2: 'blocks/Stone',
-      3: 'blocks/Brick',
-      4: 'blocks/Cobblestone',
-      5: 'blocks/Wood',
-      6: 'blocks/Dirt',
-      7: 'blocks/Dirt',
-      8: 'blocks/Dirt',
-      9: 'blocks/Dirt'
-    }
-
-    for (let i in dungeonBitmap) {
-      let bit = dungeonBitmap[i];
-
-      if (bit !== 0) {
-        let bitData = interpretBit(bit);
-
-        let x_pos = i % DUNGEON_WIDTH;
-        let z_pos = Math.floor(i / DUNGEON_WIDTH);
-
-        if (bitData.isWall === 0) {
-          plat.player.x = x_pos - 0.5;
-          plat.player.z = z_pos - 0.5;
-        }
-        
-        let floorMeshName = typeToFloor[bitData.type] + effectToName[bitData.effect];
-        
-
-
-        let floor = new RenderComponent(floorMeshName, {translation: [x_pos, 0, z_pos]});
-        renderer.scene.addComponent(floor);
-
-        let ceiling = new RenderComponent(floorMeshName, {translation: [x_pos, bitData.height, z_pos]});
-        renderer.scene.addComponent(ceiling);
-
-        plat.addBlock(new Block(x_pos - 0.5, 0 - 0.5, z_pos - 0.5, 1, 1, 1));
-        plat.addBlock(new Block(x_pos - 0.5, bitData.height - 0.5, z_pos - 0.5, 1, 1, 1));
-
-        if (bitData.isWall == 1) {
-          let wallMeshName = typeToWall[bitData.type] + effectToName[bitData.effect];
-          for (let i = 1; i < bitData.height; i++) {
-            let wall = new RenderComponent(wallMeshName, {translation: [x_pos, i, z_pos]});
-            renderer.scene.addComponent(wall);
-            plat.addBlock(new Block(x_pos - 0.5, i - 0.5, z_pos - 0.5, 1, 1, 1));
-          }
-        }
-      }
-    }
+    console.log(generateDungeonMap())
+    let dungeonBitmap = generateDungeonMap();
+    // Add blocks
 
     const npc1 = new NPC(-3, 20, 0, new RenderComponent("items/rat"));
     npc1.setAI(function(plat) {
@@ -218,6 +133,8 @@ https://www.khanacademy.org/cs/i/5482258067734528
       ctx2D.beginPath();
       ctx2D.moveTo(overlay.width / 2 - 5, overlay.height / 2);
       ctx2D.lineTo(overlay.width / 2 + 5, overlay.height / 2);
+      ctx2D.moveTo(overlay.width / 2, overlay.height / 2 - 5);
+      ctx2D.lineTo(overlay.width / 2, overlay.height / 2 + 5);
       ctx2D.stroke();
 
       // Handle death

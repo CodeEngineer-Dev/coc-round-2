@@ -171,7 +171,10 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
       this.iyInventory = iyInventory;
     }
 
-    // Get hovered slot
+    /** Get hovered slot
+     * 
+     * @returns {Object?}
+     */
     getHoveredSlot() {
       // Go through all slots
       for (const rowI in this.slots) {
@@ -187,7 +190,13 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
       return null;
     }
     
-    // Display item
+    /** Display item
+     * 
+     * @param {HTMLImageElement} icon 
+     * @param {Number} amount 
+     * @param {Number} x 
+     * @param {Number} y 
+     */
     displayItem(icon, amount, x, y) {
       // Draws the image
       ctx2D.drawImage(
@@ -205,7 +214,9 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
       }
     }
 
-    // Display and update
+    /** Display and update
+     * 
+     */
     dispUpd() {
       // Initial formatting
       ctx2D.strokeStyle = "#acacac";
@@ -342,7 +353,9 @@ const { Inventory, ItemInstance, ItemPrototype } = (function() {
       }
     }
 
-    // Toggle opened
+    /** Toggle opened
+     * 
+     */
     toggleOpened() {
       this.opened = !this.opened;
       togglePointer();
