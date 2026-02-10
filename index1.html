@@ -47,7 +47,6 @@ https://www.khanacademy.org/cs/i/5482258067734528
   <script type src="items.js"></script>
   <script type src="platf.js"></script>
   <script type src="models.js"></script>
-  <script type src="base64files.js"></script>
   <script type src="dungeon.js"></script>
   <script type>
     // Initialize a renderer
@@ -55,6 +54,7 @@ https://www.khanacademy.org/cs/i/5482258067734528
     renderer.assetManager.loadFromBase64('blocks', blocksBase64);
     renderer.assetManager.loadFromBase64('items', itemsBase64);
     renderer.assetManager.loadFromBase64('lights', lightBase64);
+    console.log(renderer.assetManager)
     
     // Initialize platformer
     plat = new Platformer(0, 1, 0);
@@ -160,7 +160,8 @@ https://www.khanacademy.org/cs/i/5482258067734528
           }
         } else {
           if (Math.random() < 0.05) {
-            const npc = new NPC(x_pos - 0.35, 1, z_pos - 0.35, new RenderComponent("items/rat", {translation: [x_pos, 2, z_pos]}));
+            
+            const npc = new NPC(x_pos - 0.35, 1, z_pos - 0.35, new RenderComponent("items/rat-attack", {translation: [x_pos, 2, z_pos]}));
             npc.setAI(function(plat) {
               return { Space: true, dx: 0, dy: 0 };
             });
