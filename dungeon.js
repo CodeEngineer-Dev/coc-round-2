@@ -1,11 +1,12 @@
 let [generateDungeonMap, interpretBit, DUNGEON_WIDTH, DUNGEON_HEIGHT] =
   (function () {
-    var WIDTH = 32;
-    var HEIGHT = 32;
+    var WIDTH = 64;
+    var HEIGHT = 64;
 
     var MIN_WIDTH = 8;
     var MIN_HEIGHT = 8;
     var MIN_SIZE = 8;
+    var MAX_SIZE = 16;
 
     function generateBSP(x, z, w, h, c) {
       if (w > MIN_WIDTH && h > MIN_HEIGHT) {
@@ -74,8 +75,14 @@ let [generateDungeonMap, interpretBit, DUNGEON_WIDTH, DUNGEON_HEIGHT] =
         };
       }
       if (bsp.back === null && bsp.front === null) {
-        var w = Math.floor(Math.random() * (bsp.w - MIN_SIZE)) + MIN_SIZE;
-        var h = Math.floor(Math.random() * (bsp.h - MIN_SIZE)) + MIN_SIZE;
+        var w = Math.min(
+          Math.floor(Math.random() * (bsp.w - MIN_SIZE)) + MIN_SIZE,
+          MAX_SIZE,
+        );
+        var h = Math.min(
+          Math.floor(Math.random() * (bsp.h - MIN_SIZE)) + MIN_SIZE,
+          MAX_SIZE,
+        );
         var x = bsp.x + Math.floor(Math.random() * (bsp.w - w - 1)) + 1;
         var y = bsp.z + Math.floor(Math.random() * (bsp.h - h - 1)) + 1;
         //noStroke();

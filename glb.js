@@ -32,8 +32,8 @@ TODO: Add in tangents so that normals work properly.
 
 */
 const { Renderer, RenderComponent } = (function () {
-  const MAX_POINT_LIGHTS = 10;
-  const MAX_SPOT_LIGHTS = 10;
+  const MAX_POINT_LIGHTS = 100;
+  const MAX_SPOT_LIGHTS = 1;
 
   /**
    * Asset manager for the renderer. Loads models and stores meshes, materials, and textures.
