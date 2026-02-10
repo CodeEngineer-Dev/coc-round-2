@@ -79,6 +79,10 @@ function onMouseMove(event) {
 }
 
 // More listeners
+/** Mouse down event listener
+ * 
+ * @param {Event} e 
+ */
 function onMouseDown(e) {
   switch (e.which) {
     case 1: events.MouseLeft = true; break;
@@ -86,6 +90,10 @@ function onMouseDown(e) {
   }
 }
 
+/** Mouse up event listener
+ * 
+ * @param {Event} e 
+ */
 function onMouseUp(e) {
   switch (e.which) {
     case 1: events.MouseLeft = false; break;
@@ -94,21 +102,33 @@ function onMouseUp(e) {
 }
 
 // Turn pointer on and off
+/** Turn pointer on (eg for opening inventory), when in the pointer lock state
+ * 
+ */
 function turnPointerOn() {
   pointerInUse = true;
   mouseX = overlay.width / 2;
   mouseY = overlay.height / 2;
 }
 
+/** Turn pointer off (eg for closing inventory), when in the pointer lock state
+ * 
+ */
 function turnPointerOff() {
   pointerInUse = false;
 }
 
+/** Toggle pointer (eg for opening inventory), when in the pointer lock state
+ * 
+ */
 function togglePointer() {
   (pointerInUse ? turnPointerOff : turnPointerOn)();
 }
 
 // Draw pointer if in use
+/** Draws the pointer.
+ * 
+ */
 function drawPointer() {
 if (pointerInUse) {
     ctx2D.lineWidth = 1;

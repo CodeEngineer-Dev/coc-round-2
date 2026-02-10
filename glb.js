@@ -664,7 +664,16 @@ const { Renderer, RenderComponent } = (function () {
      * @param {RenderComponent} component
      */
     addComponent(component) {
-      this.componentList.push(component);
+      if (component instanceof RenderComponent) {
+        this.componentList.push({
+          name: "who cares lol",
+          renderComponent: component,
+          parent: null,
+          worldMatrix: glMatrix.mat4.create()
+        });
+      } else {
+        this.componentList.push(component);
+      }
     }
     /**
      * Remove render component from scene list
@@ -1208,7 +1217,7 @@ const { Renderer, RenderComponent } = (function () {
       // Set directional light defaults
       this.directionalLight = {
         direction: glMatrix.vec3.fromValues(0.3, -0.5, -0.8),
-        ambient: glMatrix.vec3.fromValues(0.1, 0.1, 0.1),
+        ambient: glMatrix.vec3.fromValues(1, 1, 1),
         diffuse: glMatrix.vec3.fromValues(0.2, 0.2, 0.2),
         specular: glMatrix.vec3.fromValues(0.4, 0.4, 0.4),
       };
@@ -1582,12 +1591,11 @@ const { Renderer, RenderComponent } = (function () {
         glMatrix.mat4.transpose(utilMatrix, utilMatrix);
         glMatrix.mat3.fromMat4(normalMatrix, utilMatrix);
 
-        list.push({
-          mesh: node.renderComponent.mesh,
-          worldMatrix: node.worldMatrix,
-          normalMatrix: normalMatrix,
-          light: node.renderComponent.light,
-        });
+        node.normalMatrix = normalMatrix;
+        node.mesh = node.renderComponent.mesh;
+        node.light = node.renderComponent.light;
+
+        list.push(node);
       }
 
       return list;

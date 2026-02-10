@@ -1,6 +1,6 @@
-const { Block, Platformer } = (function () {
+const { Block, Entity, NPC, Platformer } = (function () {
   // Constants
-  const HVEL = 3; // PLEASE ADJUST AS NECESSARY, I HAVE NOT PLAYTESTED THESE CONSTANTS MAINLY
+  const HVEL = 4; // PLEASE ADJUST AS NECESSARY, I HAVE NOT PLAYTESTED THESE CONSTANTS MAINLY
   const JUMP = 10; // BECAUSE I HAVE NO IDEA HOW TO ADD A BLOCK TO THE SCENE.
   const GRAV = -30;
   const SENS = Math.PI / 250; // mouse sensitivity
@@ -18,48 +18,43 @@ const { Block, Platformer } = (function () {
      * @param {Number} y
      * @param {Number} z
      */
-    constructor(x, y, z, w, h, l, renderComponent) {
+    constructor(x, y, z, w, h, l) {
       // Initiates x, y, z, and texture, creates hitbox
       this.x = x;
       this.y = y;
       this.z = z;
       this.hbox = new CubicHitbox(x, y, z, x + w, y + h, z + l);
-
-      // Assign render component to block
-      this.renderComponent = renderComponent;
     }
 
-    static fromRenderComponent(w, h, l, renderComponent) {
+    /** Creates an instance of Block from a scene graph node.
+     * 
+     * @param {Number} w 
+     * @param {Number} h 
+     * @param {Number} l 
+     * @param {Object} node 
+     * @returns {Block}
+     */
+    static fromNode(w, h, l, node) {
+      // This moves a vector to where the block is, and then puts the block there
+      const vec = glMatrix.vec4.fromValues(0, 0, 0, 1);
+      glMatrix.vec4.transformMat4(vec, vec, node.worldMatrix); // vec = node.worldMatrix * vec
       return new Block(
-        renderComponent.transform.translation[0] - 0.5 * w,
-        renderComponent.transform.translation[1] - 0.5 * h,
-        renderComponent.transform.translation[2] - 0.5 * l,
+        vec[0] - 0.5 * w,
+        vec[1] - 0.5 * h,
+        vec[2] - 0.5 * l,
         w,
         h,
-        l,
-        renderComponent,
+        l
       );
-    }
-
-    /** Adds the block to the scene.
-     *
-     * @param {Scene} scene
-     */
-    addToScene(scene) {
-      // addComponent to the renderer's scene
     }
   }
 
-  /** Player, for use in the platforming engine
-   *
-   * @class Player
-   * @typedef {Player}
+  /** Entity
+   * @class Entity
+   * @typedef {Entity}
    */
-  class Player {
-    static width = 0.7;
-    static height = 1.8;
-
-    /** Creates an instance of Block.
+  class Entity {
+    /** Creates an instance of Entity.
      *
      * @constructor
      * @param {Number} x
@@ -75,9 +70,9 @@ const { Block, Platformer } = (function () {
         x,
         y,
         z,
-        x + Player.width,
-        y + Player.height, // Switched height to y-axis, VERY IMPORTANT!
-        z + Player.width,
+        x + this.constructor.width,
+        y + this.constructor.height, // Switched height to y-axis, VERY IMPORTANT!
+        z + this.constructor.width,
       );
       // Creates x, y, z velocities
       this.xv = 0;
@@ -94,27 +89,6 @@ const { Block, Platformer } = (function () {
       this.inventory = new Inventory();
     }
 
-    /** Orients camera.
-     *
-     * @param {Camera} camera
-     */
-    orient(camera) {
-      this.resetHitbox();
-      // Sets camera position
-      camera.transform.setTranslation(
-        this.hbox.x1 + Player.width / 2,
-        this.hbox.y1 + Player.height - 0.3, // Same change as in the constructor!
-        this.hbox.z1 + Player.width / 2,
-      );
-      // Set rotation (0 at the end is roll, but we don't use roll)
-      camera.transform.setRotation(
-        (this.pitch * 180) / Math.PI,
-        (this.yaw * 180) / Math.PI,
-        0,
-        true,
-      );
-    }
-
     /** Resets hitbox.
      *
      */
@@ -123,13 +97,13 @@ const { Block, Platformer } = (function () {
         this.x,
         this.y,
         this.z,
-        this.x + Player.width,
-        this.y + Player.height, // Y axis is up down, not forward back.
-        this.z + Player.width,
+        this.x + this.constructor.width,
+        this.y + this.constructor.height, // Y axis is up down, not forward back.
+        this.z + this.constructor.width,
       );
     }
 
-    /** Damages player.
+    /** Damages entity.
      *
      * @param {Number} by
      */
@@ -138,6 +112,215 @@ const { Block, Platformer } = (function () {
       if (this.health < 0) {
         this.health = 0;
       }
+    }
+
+    /** Takes an array, returns first object to collide with or null.
+     *
+     * @param {Array} arr
+     * @returns {*}
+     */
+    touchingArray(arr) {
+      for (const obj of arr) {
+        if (this.hbox.collide(obj.hbox)) {
+          return obj;
+        }
+      }
+      return null;
+    }
+
+    /** Steps entity. The events is the entity's own internal controls.
+     * 
+     * @param {Platformer} plat
+     * @param {Object} events
+     */
+    step(plat, events) {
+      // Manage x and z velocities.
+      this.xv = 0;
+      this.zv = 0;
+
+      // Switched these around until they worked, needed to add negation signs to forward and backwards.
+      if (this.health > 0 && !this.inventory.opened) {
+        if (events.KeyD) {
+          this.xv += HVEL * Math.cos(this.yaw);
+          this.zv -= HVEL * Math.sin(this.yaw);
+        }
+        if (events.KeyS) {
+          this.xv += HVEL * Math.sin(this.yaw);
+          this.zv += HVEL * Math.cos(this.yaw);
+        }
+        if (events.KeyA) {
+          this.xv -= HVEL * Math.cos(this.yaw);
+          this.zv += HVEL * Math.sin(this.yaw);
+        }
+        if (events.KeyW) {
+          this.xv -= HVEL * Math.sin(this.yaw);
+          this.zv -= HVEL * Math.cos(this.yaw);
+        }
+      }
+      // Handle each axis separately
+      this.x += this.xv * delta;
+      this.resetHitbox();
+      if (this.touchingArray(plat.blocks)) {
+        // Undo movement if colliding into a block
+        this.x -= this.xv * delta;
+        this.xv = 0;
+        this.resetHitbox();
+      }
+      // Z axis
+      this.z += this.zv * delta;
+      this.resetHitbox();
+      if (this.touchingArray(plat.blocks)) {
+        this.z -= this.zv * delta;
+        this.zv = 0;
+        this.resetHitbox();
+      }
+
+      // Y movement
+      this.yv += GRAV * delta;
+      this.y += this.yv * delta;
+      this.resetHitbox();
+      if (this.touchingArray(plat.blocks)) {
+        this.y -= this.yv * delta;
+        // Fall damage
+        if (this.yv < -1.5 * JUMP) {
+          this.damage(Math.pow(-this.yv / JUMP, 3) * 2);
+        }
+        // Only allow jumps if falling
+        if (this.health > 0 && events.Space && this.yv < 0 && !this.inventory.opened) {
+          this.yv = JUMP;
+        } else {
+          this.yv = 0;
+        }
+        this.resetHitbox();
+      }
+
+      // Angling
+      if (this.health > 0 && !this.inventory.opened) {
+        this.yaw -= events.dx * SENS;
+        this.pitch -= events.dy * SENS;
+        this.pitch = clamp(this.pitch, -Math.PI / 2, Math.PI / 2);
+      }
+
+      // Inventory
+      if (events.KeyE && !eventsPrev.KeyE) {
+        this.inventory.toggleOpened();
+      }
+
+      // Digits (to change inventory slot)
+      for (let i = 1; i <= 9 && i <= this.inventory.slots[0].length; i++) {
+        if (events[`Digit${i}`]) {
+          this.inventory.selected = i - 1;
+        }
+      }
+
+      // Inventory item usage
+      if (events.MouseLeft && !eventsPrev.MouseLeft) {
+        const slot = this.inventory.slots[0][this.inventory.selected];
+        if (slot.content?.use) {
+          const consumed = slot.content.use(this);
+          if (consumed) {
+            slot.amount --;
+            if (slot.amount == 0) {
+              slot.content = null;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** Non-player character, for use in the platforming engine
+   *
+   * @class NPC
+   * @typedef {NPC}
+   */
+  class NPC extends Entity {
+    static width = 1;
+    static height = 0.75;
+
+    /** Creates an instance of NPC.
+     *
+     * @constructor
+     * @param {Number} x
+     * @param {Number} y
+     * @param {Number} z
+     */
+    constructor(x, y, z, renderComponent) {
+      super(x, y, z);
+      this.renderComponent = renderComponent;
+      this.ai = function(plat) {
+        return {dx: 0, dy: 0};
+      };
+    }
+
+    /** Adds the NPC to the scene.
+     *
+     * @param {Scene} scene
+     */
+    addToScene(scene) {
+      scene.addComponent(this.renderComponent);
+    }
+
+    /** Updates render component.
+     *
+     */
+    updateRenderComponent() {
+      this.renderComponent.transform.setTranslation(
+        this.x + this.constructor.width / 2,
+        this.y + this.constructor.height / 2,
+        this.z + this.constructor.width / 2
+      );
+      this.renderComponent.transform.setRotation(0, 0, this.yaw);
+    }
+
+    /** Sets ai. Takes function (plat) { return events; }.
+     * 
+     * @param {Function} ai 
+     */
+    setAI(ai) {
+      this.ai = ai;
+    }
+  }
+
+  /** Player, for use in the platforming engine
+   *
+   * @class Player
+   * @typedef {Player}
+   */
+  class Player extends Entity {
+    static width = 0.7;
+    static height = 1.8;
+
+    /** Creates an instance of Player.
+     *
+     * @constructor
+     * @param {Number} x
+     * @param {Number} y
+     * @param {Number} z
+     */
+    constructor(x, y, z) {
+      super(x, y, z);
+    }
+
+    /** Orients camera.
+     *
+     * @param {Camera} camera
+     */
+    orient(camera) {
+      this.resetHitbox();
+      // Sets camera position
+      camera.transform.setTranslation(
+        this.hbox.x1 + this.constructor.width / 2,
+        this.hbox.y1 + this.constructor.height - 0.3, // Same change as in the constructor!
+        this.hbox.z1 + this.constructor.width / 2,
+      );
+      // Set rotation (0 at the end is roll, but we don't use roll)
+      camera.transform.setRotation(
+        (this.pitch * 180) / Math.PI,
+        (this.yaw * 180) / Math.PI,
+        0,
+        true,
+      );
     }
 
     /** Displays overlay on 2D context.
@@ -161,20 +344,6 @@ const { Block, Platformer } = (function () {
       this.displayHealth =
         this.health + (this.displayHealth - this.health) * 0.9;
     }
-
-    /** Takes an array, returns first object to collide with or null.
-     *
-     * @param {Array} arr
-     * @returns {*}
-     */
-    touchingArray(arr) {
-      for (const obj of arr) {
-        if (this.hbox.collide(obj.hbox)) {
-          return obj;
-        }
-      }
-      return null;
-    }
   }
 
   /** Platformer game class, handles platforming logic
@@ -194,6 +363,7 @@ const { Block, Platformer } = (function () {
       this.spawnY = spawnY;
       this.spawnZ = spawnZ;
       this.player = new Player(spawnX, spawnY, spawnZ);
+      this.entities = [];
       this.blocks = [];
     }
     /** Adds a block to the blocks.
@@ -207,100 +377,13 @@ const { Block, Platformer } = (function () {
      *
      */
     step() {
-      const p = this.player;
-      // Manage x and z velocities, PLEASE ADJUST AS NECESSARY, NOT PLAYTESTED
-      p.xv = 0;
-      p.zv = 0;
-
-      // Switched these around until they worked, needed to add negation signs to forward and backwards.
-      if (p.health > 0 && !p.inventory.opened) {
-        if (events.KeyD) {
-          p.xv += HVEL * Math.cos(p.yaw);
-          p.zv -= HVEL * Math.sin(p.yaw);
-        }
-        if (events.KeyS) {
-          p.xv += HVEL * Math.sin(p.yaw);
-          p.zv += HVEL * Math.cos(p.yaw);
-        }
-        if (events.KeyA) {
-          p.xv -= HVEL * Math.cos(p.yaw);
-          p.zv += HVEL * Math.sin(p.yaw);
-        }
-        if (events.KeyW) {
-          p.xv -= HVEL * Math.sin(p.yaw);
-          p.zv -= HVEL * Math.cos(p.yaw);
-        }
-      }
-      // Handle each axis separately
-      p.x += p.xv * delta;
-      p.resetHitbox();
-      if (p.touchingArray(this.blocks)) {
-        p.x -= p.xv * delta;
-        p.xv = 0;
-        p.resetHitbox();
-      }
-      // Z axis
-      p.z += p.zv * delta;
-      p.resetHitbox();
-      if (p.touchingArray(this.blocks)) {
-        p.z -= p.zv * delta;
-        p.zv = 0;
-        p.resetHitbox();
-      }
-
-      // Y movement
-      p.yv += GRAV * delta;
-      p.y += p.yv * delta;
-      p.resetHitbox();
-      if (p.touchingArray(this.blocks)) {
-        p.y -= p.yv * delta;
-        // Fall damage
-        if (p.yv < -1.5 * JUMP) {
-          p.damage(Math.pow(-p.yv / JUMP, 3) * 2);
-        }
-        // Only allow jumps if falling
-        if (p.health > 0 && events.Space && p.yv < 0 && !p.inventory.opened) {
-          p.yv = JUMP;
-        } else {
-          p.yv = 0;
-        }
-        p.resetHitbox();
-      }
-
-      // Angling
-      if (p.health > 0 && !p.inventory.opened) {
-        p.yaw -= events.dx * SENS;
-        p.pitch -= events.dy * SENS;
-        p.pitch = clamp(p.pitch, -Math.PI / 2, Math.PI / 2);
-      }
-
-      // Inventory
-      if (events.KeyE && !eventsPrev.KeyE) {
-        p.inventory.toggleOpened();
-      }
-
-      // Digits (to change inventory slot)
-      for (let i = 1; i <= 9 && i <= p.inventory.slots[0].length; i++) {
-        if (events[`Digit${i}`]) {
-          p.inventory.selected = i - 1;
-        }
-      }
-
-      // Inventory item usage
-      if (events.MouseLeft && !eventsPrev.MouseLeft) {
-        const slot = p.inventory.slots[0][p.inventory.selected];
-        if (slot.content?.use) {
-          const consumed = slot.content.use();
-          if (consumed) {
-            slot.amount --;
-            if (slot.amount == 0) {
-              slot.content = null;
-            }
-          }
-        }
+      this.player.step(this, events);
+      for (const entity of this.entities) {
+        entity.step(this, entity.ai.call(entity, this));
+        entity.updateRenderComponent();
       }
     }
   }
 
-  return { Block, Platformer };
+  return { Block, Entity, NPC, Platformer };
 })();
